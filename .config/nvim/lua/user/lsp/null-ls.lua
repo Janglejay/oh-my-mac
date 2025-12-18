@@ -11,12 +11,9 @@ local diagnostics = null_ls.builtins.diagnostics
 null_ls.setup({
 	debug = false,
 	sources = {
-    -- require("null-ls").builtins.formatting.stylua,
-    -- require("null-ls").builtins.diagnostics.eslint,
-    require("null-ls").builtins.completion.spell,
-		-- formatting.prettier.with({ extra_args = { "--no-semi", "--single-quote", "--jsx-single-quote" } }),
-		-- formatting.black.with({ extra_args = { "--fast" } }),
-    -- formatting.stylua,
-    -- diagnostics.flake8
+		require("null-ls").builtins.completion.spell,
+		formatting.black.with({ extra_args = { "--fast" } }),
+		formatting.isort,
+		diagnostics.ruff,
 	},
 })

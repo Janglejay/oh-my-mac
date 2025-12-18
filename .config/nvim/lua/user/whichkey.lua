@@ -70,7 +70,7 @@ local ok, _ = pcall(function()
     { "<leader>la", "<cmd>lua vim.lsp.buf.code_action()<cr>", desc = "Code Action" },
     { "<leader>ld", "<cmd>Telescope lsp_document_diagnostics<cr>", desc = "Document Diagnostics" },
     { "<leader>lw", "<cmd>Telescope lsp_workspace_diagnostics<cr>", desc = "Workspace Diagnostics" },
-    { "<leader>lf", "<cmd>lua vim.lsp.buf.formatting()<cr>", desc = "Format" },
+    { "<leader>lf", "<cmd>lua vim.lsp.buf.format({ async = true })<cr>", desc = "Format" },
     { "<leader>li", "<cmd>LspInfo<cr>", desc = "Info" },
     { "<leader>lI", "<cmd>LspInstallInfo<cr>", desc = "Installer Info" },
     { "<leader>lj", "<cmd>lua vim.lsp.diagnostic.goto_next()<CR>", desc = "Next Diagnostic" },
@@ -152,7 +152,7 @@ if not ok then
         "<cmd>Telescope lsp_workspace_diagnostics<cr>",
         "Workspace Diagnostics",
       },
-      f = { "<cmd>lua vim.lsp.buf.formatting()<cr>", "Format" },
+      f = { "<cmd>lua vim.lsp.buf.format({ async = true })<cr>", "Format" },
       i = { "<cmd>LspInfo<cr>", "Info" },
       I = { "<cmd>LspInstallInfo<cr>", "Installer Info" },
       j = {

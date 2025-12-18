@@ -1,0 +1,4 @@
+WARN | 13:16:51 | vscode-loader: Manifest /Users/fufangjie/.vim/plugged/vim-instant-markdown/package.json does not contribute any snippets.
+WARN | 13:16:51 | vscode-loader: Manifest /Users/fufangjie/.local/share/nvim/site/pack/packer/start/gruvbox/package.json does not contribute any snippets.
+WARN | 13:17:21 | vscode-loader: Manifest /Users/fufangjie/.vim/plugged/vim-instant-markdown/package.json does not contribute any snippets.
+WARN | 13:17:21 | vscode-loader: Manifest /Users/fufangjie/.local/share/nvim/site/pack/packer/start/gruvbox/package.json does not contribute any snippets.

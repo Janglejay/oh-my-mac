@@ -1,0 +1,3 @@
+WRN 2025-12-18T13:16:42.442 ?.55599    server_start:163: Failed to start server: operation not permitted: /var/folders/l7/zfcghd0s0zx_m1bpfmg_p_6c0000gn/T/nvim.fufangjie/yGELuu/nvim.55599.0
+WRN 2025-12-18T13:16:51.621 ?.55683    server_start:163: Failed to start server: operation not permitted: /var/folders/l7/zfcghd0s0zx_m1bpfmg_p_6c0000gn/T/nvim.fufangjie/Cp5Y1N/nvim.55683.0
+WRN 2025-12-18T13:17:21.232 ?.56194    server_start:163: Failed to start server: operation not permitted: /var/folders/l7/zfcghd0s0zx_m1bpfmg_p_6c0000gn/T/nvim.fufangjie/HugoOZ/nvim.56194.0

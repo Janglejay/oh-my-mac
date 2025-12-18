@@ -37,7 +37,7 @@ local keymap = vim.api.nvim_set_keymap
 keymap("n", "R", ":bnext<CR>", opts)
 
 keymap("n", "E", ":bprevious<CR>", opts)
-keymap("n", "=", "<cmd>lua vim.lsp.buf.formatting()<cr>", opts)
+keymap("n", "=", "<cmd>lua vim.lsp.buf.format({ async = true })<cr>", opts)
 
 keymap("n", "<C-u>", "<cmd>lua require 'gitsigns'.reset_hunk()<cr>", opts)
 keymap("n", "gp", "<cmd>lua require 'gitsigns'.preview_hunk()<cr>", opts)
@@ -86,4 +86,3 @@ keymap("n", "st", "<cmd>ToggleTerm direction=horizontal<cr>", opts)
 -- keymap("t", "<C-j>", "<C-\\><C-N><C-w>j", term_opts)
 -- keymap("t", "<C-k>", "<C-\\><C-N><C-w>k", term_opts)
 -- keymap("t", "<C-l>", "<C-\\><C-N><C-w>l", term_opts)
-
