@@ -233,30 +233,46 @@ install_homebrew() {
 # =============================================================================
 install_raycast() {
     log_info "[Raycast] 检查 Raycast..."
-    local was_installed=false
-
-    if [[ -d "/Applications/Raycast.app" ]]; then
-        log_success "[Raycast] 已安装"
-        was_installed=true
-    else
-        log_info "[Raycast] 正在安装..."
-        brew_install_with_retry "brew install --cask" "raycast"
-        log_success "[Raycast] 安装完成"
-    fi
-
-    # 导入配置文件
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="${script_dir}/raycast_config.rayconfig"
+    local config_imported_marker="$HOME/.raycast_config_imported"
+
+    # 1. 软件安装检查
+    if [[ -d "/Applications/Raycast.app" ]]; then
+        log_success "[Raycast] 软件已安装，跳过安装"
+    else
+        log_info "[Raycast] 正在安装..."
+        if brew_install_with_retry "brew install --cask" "raycast"; then
+            log_success "[Raycast] 安装完成"
+        else
+            log_error "[Raycast] 安装失败"
+            return 1
+        fi
+    fi
+
+    # 2. 配置导入检查（避免重复导入）
+    if [[ -f "$config_imported_marker" ]]; then
+        log_info "[Raycast] 配置已导入过（标记文件存在），跳过配置导入"
+        return 0
+    fi
 
     if [[ -f "$config_file" ]]; then
-        log_info "[Raycast] 导入配置..."
-        # Raycast 配置导入命令（使用密码 fufangjie）
+        log_info "[Raycast] 发现配置文件，准备导入..."
+        log_info "[Raycast] 配置文件: $config_file"
+        log_info "[Raycast] 配置密码: fufangjie"
+
+        # Raycast 配置导入命令
         if open -a Raycast "$config_file" 2>/dev/null; then
             log_success "[Raycast] 配置导入已启动"
             log_info "[Raycast] 请在弹出的窗口中输入密码: fufangjie"
+            # 创建标记文件，表示已尝试导入
+            touch "$config_imported_marker"
+            log_info "[Raycast] 已创建导入标记: $config_imported_marker"
         else
-            log_warn "[Raycast] 无法自动导入配置，请手动导入: $config_file"
-            log_info "[Raycast] 配置文件密码: fufangjie"
+            log_warn "[Raycast] 无法自动导入配置"
+            log_info "[Raycast] 请手动导入: 打开 Raycast → 设置 → 导入配置"
+            log_info "[Raycast] 配置文件路径: $config_file"
+            log_info "[Raycast] 配置密码: fufangjie"
         fi
     else
         log_warn "[Raycast] 未找到配置文件: $config_file"
@@ -269,13 +285,17 @@ install_raycast() {
 install_chrome() {
     log_info "[Chrome] 检查 Google Chrome..."
     if [[ -d "/Applications/Google Chrome.app" ]]; then
-        log_success "[Chrome] Google Chrome 已安装"
+        log_success "[Chrome] 已安装，跳过"
         return 0
     fi
 
-    log_info "[Chrome] 正在安装 Google Chrome..."
-    brew_install_with_retry "brew install --cask" "google-chrome"
-    log_success "[Chrome] Google Chrome 安装完成"
+    log_info "[Chrome] 正在安装..."
+    if brew_install_with_retry "brew install --cask" "google-chrome"; then
+        log_success "[Chrome] 安装完成"
+    else
+        log_error "[Chrome] 安装失败"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -284,13 +304,17 @@ install_chrome() {
 install_edge() {
     log_info "[Edge] 检查 Microsoft Edge..."
     if [[ -d "/Applications/Microsoft Edge.app" ]]; then
-        log_success "[Edge] 已安装"
+        log_success "[Edge] 已安装，跳过"
         return 0
     fi
 
     log_info "[Edge] 正在安装..."
-    brew_install_with_retry "brew install --cask" "microsoft-edge"
-    log_success "[Edge] 安装完成"
+    if brew_install_with_retry "brew install --cask" "microsoft-edge"; then
+        log_success "[Edge] 安装完成"
+    else
+        log_error "[Edge] 安装失败"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -299,14 +323,18 @@ install_edge() {
 install_snipaste() {
     log_info "[Snipaste] 检查 Snipaste..."
     if [[ -d "/Applications/Snipaste.app" ]]; then
-        log_success "[Snipaste] 已安装"
+        log_success "[Snipaste] 已安装，跳过"
         return 0
     fi
 
     log_info "[Snipaste] 正在安装..."
-    brew_install_with_retry "brew install --cask" "snipaste"
-    log_success "[Snipaste] 安装完成"
-    log_info "[Snipaste] 是一个强大的截图/贴图工具 (F1 截图, F3 贴图)"
+    if brew_install_with_retry "brew install --cask" "snipaste"; then
+        log_success "[Snipaste] 安装完成"
+        log_info "[Snipaste] 快捷键: F1 截图, F3 贴图"
+    else
+        log_error "[Snipaste] 安装失败"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -314,33 +342,47 @@ install_snipaste() {
 # =============================================================================
 install_karabiner() {
     log_info "[Karabiner] 检查 Karabiner-Elements..."
-    local need_restart=false
-
-    if [[ -d "/Applications/Karabiner-Elements.app" ]]; then
-        log_success "[Karabiner] 已安装"
-    else
-        log_info "[Karabiner] 正在安装..."
-        brew_install_with_retry "brew install --cask" "karabiner-elements"
-        log_success "[Karabiner] 安装完成"
-        need_restart=true
-    fi
-
-    # 导入配置文件
     local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local config_file="${script_dir}/karabiner_config.json"
+    local karabiner_config_dir="$HOME/.config/karabiner"
+    local karabiner_config_dest="$karabiner_config_dir/karabiner.json"
+    local need_restart=false
 
-    if [[ -f "$config_file" ]]; then
-        log_info "[Karabiner] 导入配置..."
-        mkdir -p "$HOME/.config/karabiner"
-        cp "$config_file" "$HOME/.config/karabiner/karabiner.json"
-        log_success "[Karabiner] 配置已导入"
-        need_restart=true
+    # 1. 软件安装检查
+    if [[ -d "/Applications/Karabiner-Elements.app" ]]; then
+        log_success "[Karabiner] 软件已安装，跳过安装"
+    else
+        log_info "[Karabiner] 正在安装..."
+        if brew_install_with_retry "brew install --cask" "karabiner-elements"; then
+            log_success "[Karabiner] 安装完成"
+            need_restart=true
+        else
+            log_error "[Karabiner] 安装失败"
+            return 1
+        fi
+    fi
+
+    # 2. 配置导入检查
+    if [[ -f "$karabiner_config_dest" ]]; then
+        log_info "[Karabiner] 配置文件已存在，跳过配置导入"
+        log_info "[Karabiner] 现有配置: $karabiner_config_dest"
+        log_info "[Karabiner] 如需重新导入，请手动删除该文件后重新运行脚本"
+    elif [[ -f "$config_file" ]]; then
+        log_info "[Karabiner] 发现配置文件，准备导入..."
+        mkdir -p "$karabiner_config_dir"
+        if cp "$config_file" "$karabiner_config_dest"; then
+            log_success "[Karabiner] 配置已导入: $karabiner_config_dest"
+            need_restart=true
+        else
+            log_error "[Karabiner] 配置复制失败"
+        fi
     else
         log_warn "[Karabiner] 未找到配置文件: $config_file"
     fi
 
     if $need_restart; then
-        log_warn "[Karabiner] 请手动打开并授予必要权限"
+        log_warn "[Karabiner] 请手动打开 Karabiner-Elements 并授予必要权限"
+        log_info "[Karabiner] 配置导入后可能需要重启软件生效"
     fi
 }
 
@@ -370,13 +412,17 @@ install_git() {
 install_ghostty() {
     log_info "[Ghostty] 检查 Ghostty..."
     if check_command ghostty; then
-        log_success "[Ghostty] 已安装"
+        log_success "[Ghostty] 已安装，跳过"
         return 0
     fi
 
     log_info "[Ghostty] 正在安装..."
-    brew_install_with_retry "brew install --cask" "ghostty"
-    log_success "[Ghostty] 安装完成"
+    if brew_install_with_retry "brew install --cask" "ghostty"; then
+        log_success "[Ghostty] 安装完成"
+    else
+        log_error "[Ghostty] 安装失败"
+        return 1
+    fi
 }
 
 # =============================================================================
@@ -385,7 +431,7 @@ install_ghostty() {
 setup_nvim() {
     log_info "[Neovim] 开始配置 Neovim..."
 
-    # 安装 Neovim
+    # 1. 安装 Neovim
     if ! check_command nvim; then
         log_info "[Neovim] 正在安装 Neovim..."
         if brew_install_with_retry "brew install" "neovim"; then
@@ -398,7 +444,15 @@ setup_nvim() {
         log_success "[Neovim] 已安装: $(nvim --version | head -n1)"
     fi
 
-    # 安装依赖工具（使用重试）
+    # 2. 检查配置是否已存在
+    local config_exists=false
+    if [[ -d "$HOME/.config/nvim" ]] && ([[ -f "$HOME/.config/nvim/init.lua" ]] || [[ -f "$HOME/.config/nvim/init.vim" ]]); then
+        config_exists=true
+        log_info "[Neovim] 配置已存在: ~/.config/nvim"
+        log_info "[Neovim] 跳过仓库克隆，将直接刷新插件..."
+    fi
+
+    # 3. 安装依赖工具（使用重试）
     log_info "[Neovim] 安装依赖工具 (ripgrep, fd, lazygit, node, python)..."
     if brew_install_with_retry "brew install" "ripgrep fd lazygit node python"; then
         log_success "[Neovim] 依赖工具安装完成"
@@ -406,7 +460,7 @@ setup_nvim() {
         log_warn "[Neovim] 部分依赖工具安装失败"
     fi
 
-    # 安装 pynvim（检查 pip3 是否存在）
+    # 4. 安装 pynvim（检查 pip3 是否存在）
     log_info "[Neovim] 检查并安装 pynvim..."
     if ! check_command pip3; then
         log_warn "[Neovim] pip3 未找到，尝试安装..."
@@ -424,68 +478,113 @@ setup_nvim() {
         log_warn "[Neovim] pynvim 安装失败"
     fi
 
-    # 备份旧配置
-    if [[ -d "$HOME/.config/nvim" ]]; then
-        local backup_dir="$HOME/.config/nvim.backup.$(date +%Y%m%d%H%M%S)"
-        log_warn "[Neovim] 发现旧配置，备份到 $backup_dir"
-        mv "$HOME/.config/nvim" "$backup_dir"
-        log_success "[Neovim] 旧配置已备份"
+    # 5-7. 克隆配置仓库（如果配置不存在）
+    if ! $config_exists; then
+        # 如果目录存在但没有有效配置，删除它
+        if [[ -d "$HOME/.config/nvim" ]]; then
+            log_warn "[Neovim] 发现无效配置目录，删除中..."
+            rm -rf "$HOME/.config/nvim"
+        fi
+
+        # 克隆配置仓库
+        log_info "[Neovim] 克隆 vim-config 配置仓库到 ~/.config/nvim ..."
+        if git clone https://github.com/Janglejay/vim-config.git "$HOME/.config/nvim"; then
+            log_success "[Neovim] 配置仓库克隆完成"
+        else
+            log_error "[Neovim] 配置仓库克隆失败"
+            return 1
+        fi
+
+        # 验证配置
+        if [[ -f "$HOME/.config/nvim/init.lua" ]] || [[ -f "$HOME/.config/nvim/init.vim" ]]; then
+            log_success "[Neovim] 配置文件已就位"
+        else
+            log_warn "[Neovim] 未找到 init.lua/init.vim，配置可能不完整"
+        fi
     fi
 
-    # 克隆配置仓库
-    log_info "[Neovim] 克隆 vim-config 配置仓库到 ~/.config/nvim ..."
-    if git clone https://github.com/Janglejay/vim-config.git "$HOME/.config/nvim"; then
-        log_success "[Neovim] 配置仓库克隆完成"
+    # 8. 安装/更新 Packer.nvim 插件管理器
+    log_info "[Neovim] 安装/更新 Packer.nvim 插件管理器..."
+    local packer_dir="$HOME/.local/share/nvim/site/pack/packer/start/packer.nvim"
+    if [[ -d "$packer_dir" ]]; then
+        log_info "[Neovim] Packer.nvim 已存在，更新中..."
+        (cd "$packer_dir" && git pull) || log_warn "[Neovim] Packer.nvim 更新失败，继续使用现有版本"
     else
-        log_error "[Neovim] 配置仓库克隆失败"
-        return 1
+        if git clone --depth 1 https://github.com/wbthomason/packer.nvim "$packer_dir"; then
+            log_success "[Neovim] Packer.nvim 安装完成"
+        else
+            log_error "[Neovim] Packer.nvim 安装失败"
+        fi
     fi
 
-    # 验证配置
-    if [[ -f "$HOME/.config/nvim/init.lua" ]] || [[ -f "$HOME/.config/nvim/init.vim" ]]; then
-        log_success "[Neovim] 配置文件已就位"
+    # 9. 安装/刷新所有插件（headless 模式）
+    log_info "[Neovim] 正在安装/同步所有插件（可能需要几分钟）..."
+    log_info "[Neovim] 插件清单: lua/user/plugins.lua"
+
+    # 使用 headless 模式运行 PackerSync，完成后自动退出
+    # 设置超时时间为 300 秒（5分钟），防止卡住
+    log_info "[Neovim] 运行 PackerSync 中，请耐心等待..."
+    if timeout 300 nvim --headless -c 'autocmd User PackerComplete quitall' -c 'PackerSync' 2>&1; then
+        log_success "[Neovim] 所有插件安装/同步完成"
     else
-        log_warn "[Neovim] 未找到 init.lua/init.vim，配置可能不完整"
+        local exit_code=$?
+        if [[ $exit_code -eq 124 ]]; then
+            log_warn "[Neovim] 插件安装超时（5分钟），但可能已部分完成"
+        else
+            log_warn "[Neovim] 插件安装过程可能有错误（退出码: $exit_code）"
+        fi
+        log_info "[Neovim] 首次启动 nvim 时会继续安装剩余插件"
     fi
 
     log_success "[Neovim] 配置完成"
-    log_info "[Neovim] 首次启动 nvim 时会自动下载插件，请耐心等待..."
+    log_info "[Neovim] 提示: 首次启动后建议运行 :checkhealth 检查状态"
 }
 
 # =============================================================================
-# 10. 配置 Ghostty (从 vim-config 仓库)
+# 10. 配置 Ghostty
 # =============================================================================
 setup_ghostty_config() {
     log_info "[Ghostty] 开始配置 Ghostty..."
 
-    # 确保配置目录存在
-    log_info "[Ghostty] 创建配置目录 ~/.config/ghostty ..."
-    mkdir -p "$HOME/.config/ghostty"
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local config_source="${script_dir}/ghostty_config"
+    local config_dest_dir="$HOME/.config/ghostty"
+    local config_dest="$config_dest_dir/config"
 
-    # 检查源配置文件是否存在
-    local nvim_ghostty_dir="$HOME/.config/nvim/ghostty"
-    log_info "[Ghostty] 查找配置源: $nvim_ghostty_dir ..."
-
-    if [[ -f "$nvim_ghostty_dir/config" ]]; then
-        log_info "[Ghostty] 找到 config 文件，复制到 ~/.config/ghostty/ ..."
-        cp "$nvim_ghostty_dir/config" "$HOME/.config/ghostty/config"
-        log_success "[Ghostty] 配置已复制"
-    elif [[ -f "$nvim_ghostty_dir/ghostty.conf" ]]; then
-        log_info "[Ghostty] 找到 ghostty.conf 文件，复制为 config ..."
-        cp "$nvim_ghostty_dir/ghostty.conf" "$HOME/.config/ghostty/config"
-        log_success "[Ghostty] 配置已复制"
-    else
-        log_warn "[Ghostty] 未在 vim-config 中找到 ghostty 配置"
-        log_info "[Ghostty] 检查目录内容: $nvim_ghostty_dir"
-        ls -la "$nvim_ghostty_dir" 2>/dev/null || log_warn "[Ghostty] 目录不存在或为空"
-        log_info "[Ghostty] 将使用默认配置启动"
+    # 1. 检查配置文件是否已存在
+    if [[ -f "$config_dest" ]]; then
+        log_info "[Ghostty] 配置文件已存在，跳过复制"
+        log_info "[Ghostty] 现有配置: $config_dest"
+        log_info "[Ghostty] 如需重新配置，请手动删除该文件后重新运行脚本"
+        return 0
     fi
 
-    # 验证配置
-    if [[ -f "$HOME/.config/ghostty/config" ]]; then
-        log_success "[Ghostty] 配置文件已就位: ~/.config/ghostty/config"
+    # 2. 检查源配置文件是否存在
+    if [[ ! -f "$config_source" ]]; then
+        log_warn "[Ghostty] 未找到配置文件: $config_source"
+        log_info "[Ghostty] 将使用 Ghostty 默认配置"
+        return 0
+    fi
+
+    # 3. 创建配置目录
+    log_info "[Ghostty] 创建配置目录: $config_dest_dir"
+    mkdir -p "$config_dest_dir"
+
+    # 4. 复制配置文件
+    log_info "[Ghostty] 复制配置: $config_source → $config_dest"
+    if cp "$config_source" "$config_dest"; then
+        log_success "[Ghostty] 配置已复制"
     else
-        log_info "[Ghostty] 使用默认配置"
+        log_error "[Ghostty] 配置复制失败"
+        return 1
+    fi
+
+    # 5. 验证配置
+    if [[ -f "$config_dest" ]]; then
+        log_success "[Ghostty] 配置文件已就位: $config_dest"
+    else
+        log_error "[Ghostty] 配置验证失败"
+        return 1
     fi
 
     log_success "[Ghostty] 配置完成"
