@@ -39,6 +39,14 @@ set surround
 "Plug 'easymotion/vim-easymotion'
 "map mf <Plug>(easymotion-bd-f)
 "nmap mj <Plug>(easymotion-overwin-f)
+
+" Press `f` to activate AceJump
+nmap f <Action>(AceAction)
+" Press `F` to activate Target Mode
+nmap F <Action>(AceTargetAction)
+" Press `g` to activate Line Mode
+" nmap g <Action>(AceLineAction)
+
 noremap <S-CR> ,
 noremap <Leader>q :q!<CR>
 
