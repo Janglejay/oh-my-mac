@@ -383,127 +383,200 @@ install_ghostty() {
 # 9. 配置 Neovim 环境
 # =============================================================================
 setup_nvim() {
-    log_info "[Neovim] 检查 Neovim..."
+    log_info "[Neovim] 开始配置 Neovim..."
 
     # 安装 Neovim
     if ! check_command nvim; then
-        log_info "[Neovim] 正在安装..."
-        brew_install_with_retry "brew install" "neovim"
-        log_success "[Neovim] 安装完成"
+        log_info "[Neovim] 正在安装 Neovim..."
+        if brew_install_with_retry "brew install" "neovim"; then
+            log_success "[Neovim] 安装完成"
+        else
+            log_error "[Neovim] 安装失败"
+            return 1
+        fi
     else
         log_success "[Neovim] 已安装: $(nvim --version | head -n1)"
     fi
 
     # 安装依赖工具（使用重试）
-    log_info "[Neovim] 安装依赖工具..."
-    brew_install_with_retry "brew install" "ripgrep fd lazygit node python"
+    log_info "[Neovim] 安装依赖工具 (ripgrep, fd, lazygit, node, python)..."
+    if brew_install_with_retry "brew install" "ripgrep fd lazygit node python"; then
+        log_success "[Neovim] 依赖工具安装完成"
+    else
+        log_warn "[Neovim] 部分依赖工具安装失败"
+    fi
 
     # 安装 pynvim（检查 pip3 是否存在）
+    log_info "[Neovim] 检查并安装 pynvim..."
     if ! check_command pip3; then
         log_warn "[Neovim] pip3 未找到，尝试安装..."
-        python3 -m ensurepip --user 2>/dev/null || {
-            log_error "[Neovim] 无法安装 pip3，请手动安装"
+        if ! python3 -m ensurepip --user 2>/dev/null; then
+            log_error "[Neovim] 无法安装 pip3，请手动安装 Python 和 pip"
             return 1
-        }
+        fi
+        log_success "[Neovim] pip3 安装完成"
     fi
-    pip3 install --user pynvim
+
+    log_info "[Neovim] 安装 pynvim..."
+    if pip3 install --user pynvim; then
+        log_success "[Neovim] pynvim 安装完成"
+    else
+        log_warn "[Neovim] pynvim 安装失败"
+    fi
 
     # 备份旧配置
     if [[ -d "$HOME/.config/nvim" ]]; then
-        log_warn "[Neovim] 发现旧配置，备份到 ~/.config/nvim.backup.$(date +%Y%m%d%H%M%S)"
-        mv "$HOME/.config/nvim" "$HOME/.config/nvim.backup.$(date +%Y%m%d%H%M%S)"
+        local backup_dir="$HOME/.config/nvim.backup.$(date +%Y%m%d%H%M%S)"
+        log_warn "[Neovim] 发现旧配置，备份到 $backup_dir"
+        mv "$HOME/.config/nvim" "$backup_dir"
+        log_success "[Neovim] 旧配置已备份"
     fi
 
     # 克隆配置仓库
-    log_info "[Neovim] 克隆配置文件..."
-    git clone https://github.com/Janglejay/vim-config.git "$HOME/.config/nvim"
+    log_info "[Neovim] 克隆 vim-config 配置仓库到 ~/.config/nvim ..."
+    if git clone https://github.com/Janglejay/vim-config.git "$HOME/.config/nvim"; then
+        log_success "[Neovim] 配置仓库克隆完成"
+    else
+        log_error "[Neovim] 配置仓库克隆失败"
+        return 1
+    fi
+
+    # 验证配置
+    if [[ -f "$HOME/.config/nvim/init.lua" ]] || [[ -f "$HOME/.config/nvim/init.vim" ]]; then
+        log_success "[Neovim] 配置文件已就位"
+    else
+        log_warn "[Neovim] 未找到 init.lua/init.vim，配置可能不完整"
+    fi
 
     log_success "[Neovim] 配置完成"
-    log_info "[Neovim] 首次启动时会自动下载插件"
+    log_info "[Neovim] 首次启动 nvim 时会自动下载插件，请耐心等待..."
 }
 
 # =============================================================================
 # 10. 配置 Ghostty (从 vim-config 仓库)
 # =============================================================================
 setup_ghostty_config() {
-    log_info "配置 Ghostty..."
+    log_info "[Ghostty] 开始配置 Ghostty..."
 
     # 确保配置目录存在
+    log_info "[Ghostty] 创建配置目录 ~/.config/ghostty ..."
     mkdir -p "$HOME/.config/ghostty"
 
-    # 如果仓库中有 ghostty 配置，创建软链接或复制
-    if [[ -f "$HOME/.config/nvim/ghostty/config" ]]; then
-        cp "$HOME/.config/nvim/ghostty/config" "$HOME/.config/ghostty/config"
-        log_success "Ghostty 配置已复制"
-    elif [[ -f "$HOME/.config/nvim/ghostty/ghostty.conf" ]]; then
-        cp "$HOME/.config/nvim/ghostty/ghostty.conf" "$HOME/.config/ghostty/config"
-        log_success "Ghostty 配置已复制"
+    # 检查源配置文件是否存在
+    local nvim_ghostty_dir="$HOME/.config/nvim/ghostty"
+    log_info "[Ghostty] 查找配置源: $nvim_ghostty_dir ..."
+
+    if [[ -f "$nvim_ghostty_dir/config" ]]; then
+        log_info "[Ghostty] 找到 config 文件，复制到 ~/.config/ghostty/ ..."
+        cp "$nvim_ghostty_dir/config" "$HOME/.config/ghostty/config"
+        log_success "[Ghostty] 配置已复制"
+    elif [[ -f "$nvim_ghostty_dir/ghostty.conf" ]]; then
+        log_info "[Ghostty] 找到 ghostty.conf 文件，复制为 config ..."
+        cp "$nvim_ghostty_dir/ghostty.conf" "$HOME/.config/ghostty/config"
+        log_success "[Ghostty] 配置已复制"
     else
-        log_warn "未在 vim-config 仓库中找到 ghostty 配置，使用默认配置"
+        log_warn "[Ghostty] 未在 vim-config 中找到 ghostty 配置"
+        log_info "[Ghostty] 检查目录内容: $nvim_ghostty_dir"
+        ls -la "$nvim_ghostty_dir" 2>/dev/null || log_warn "[Ghostty] 目录不存在或为空"
+        log_info "[Ghostty] 将使用默认配置启动"
     fi
+
+    # 验证配置
+    if [[ -f "$HOME/.config/ghostty/config" ]]; then
+        log_success "[Ghostty] 配置文件已就位: ~/.config/ghostty/config"
+    else
+        log_info "[Ghostty] 使用默认配置"
+    fi
+
+    log_success "[Ghostty] 配置完成"
 }
 
 # =============================================================================
 # 11. 配置 Zsh (可选)
 # =============================================================================
 setup_zsh() {
-    log_info "配置 Zsh..."
+    log_info "[Zsh] 开始配置 Zsh..."
 
     # 安装 oh-my-zsh (如果未安装)
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        log_info "安装 Oh My Zsh..."
-        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+        log_info "[Zsh] 安装 Oh My Zsh..."
+        if sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended; then
+            log_success "[Zsh] Oh My Zsh 安装完成"
+        else
+            log_error "[Zsh] Oh My Zsh 安装失败"
+        fi
+    else
+        log_info "[Zsh] Oh My Zsh 已安装"
     fi
 
     # 添加常用别名到 .zshrc
-    log_info "添加别名和配置到 .zshrc..."
+    log_info "[Zsh] 检查 .zshrc 配置..."
 
-    # 使用安全追加函数添加配置块
-    local config_block=''
-    config_block+=$'\n# ============================================\n'
-    config_block+=$'# 自定义配置（由 mac-setup.sh 添加）\n'
-    config_block+=$'# ============================================\n'
-    config_block+=$'\n'
-    config_block+=$'# 编辑器设置\n'
-    config_block+=$'export EDITOR=\'nvim\'\n'
-    config_block+=$'alias vi=\'nvim\'\n'
-    config_block+=$'alias vim=\'nvim\'\n'
-    config_block+=$'\n'
-    config_block+=$'# 常用别名\n'
-    config_block+=$'alias ll=\'ls -alF\'\n'
-    config_block+=$'alias la=\'ls -A\'\n'
-    config_block+=$'alias l=\'ls -CF\'\n'
-    config_block+=$'alias ..=\'cd ..\'\n'
-    config_block+=$'alias ...=\'cd ../..\'\n'
-    config_block+=$'\n'
-    config_block+=$'# Git 别名\n'
-    config_block+=$'alias gs=\'git status\'\n'
-    config_block+=$'alias ga=\'git add\'\n'
-    config_block+=$'alias gc=\'git commit\'\n'
-    config_block+=$'alias gp=\'git push\'\n'
-    config_block+=$'alias gl=\'git pull\'\n'
-    config_block+=$'alias gd=\'git diff\'\n'
-    config_block+=$'\n'
-    config_block+=$'# 快速编辑配置\n'
-    config_block+=$'alias zshrc=\'${EDITOR} ~/.zshrc\'\n'
-    config_block+=$'alias vimrc=\'${EDITOR} ~/.config/nvim/init.lua\'\n'
-    config_block+=$'\n'
-    config_block+=$'# Homebrew 路径 (Apple Silicon)\n'
-    config_block+=$'if [[ -f "/opt/homebrew/bin/brew" ]]; then\n'
-    config_block+=$'    eval "$(/opt/homebrew/bin/brew shellenv)"\n'
-    config_block+=$'fi\n'
-
-    # 检查是否已添加过配置
-    if ! file_contains ~/.zshrc "由 mac-setup.sh 添加"; then
-        [[ -f ~/.zshrc ]] || touch ~/.zshrc
-        [[ -s ~/.zshrc && "$(tail -c1 ~/.zshrc | wc -l)" -eq 0 ]] && echo "" >> ~/.zshrc
-        echo "$config_block" >> ~/.zshrc
-        log_success "Zsh 配置已添加"
-    else
-        log_warn "Zsh 配置已存在，跳过添加"
+    # 确保 .zshrc 存在
+    if [[ ! -f ~/.zshrc ]]; then
+        log_info "[Zsh] 创建 ~/.zshrc 文件"
+        touch ~/.zshrc
     fi
 
-    log_success "Zsh 配置完成"
+    # 检查是否已添加过配置
+    if grep -q "由 mac-setup.sh 添加" ~/.zshrc 2>/dev/null; then
+        log_warn "[Zsh] 配置已存在，跳过添加"
+    else
+        log_info "[Zsh] 添加自定义配置到 ~/.zshrc ..."
+
+        # 确保文件以换行符结尾
+        if [[ -s ~/.zshrc ]] && [[ "$(tail -c1 ~/.zshrc | wc -l)" -eq 0 ]]; then
+            echo "" >> ~/.zshrc
+        fi
+
+        # 追加配置块
+        cat >> ~/.zshrc << 'EOF'
+
+# ============================================
+# 自定义配置（由 mac-setup.sh 添加）
+# ============================================
+
+# 编辑器设置
+export EDITOR='nvim'
+alias vi='nvim'
+alias vim='nvim'
+
+# 常用别名
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias ...='cd ../..'
+
+# Git 别名
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git pull'
+alias gd='git diff'
+
+# 快速编辑配置
+alias zshrc='${EDITOR} ~/.zshrc'
+alias vimrc='${EDITOR} ~/.config/nvim/init.lua'
+
+# Homebrew 路径 (Apple Silicon)
+if [[ -f "/opt/homebrew/bin/brew" ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+EOF
+
+        log_success "[Zsh] 配置已添加到 ~/.zshrc"
+    fi
+
+    # 验证配置
+    if grep -q "由 mac-setup.sh 添加" ~/.zshrc 2>/dev/null; then
+        log_success "[Zsh] 配置验证通过"
+    else
+        log_error "[Zsh] 配置验证失败，请检查 ~/.zshrc"
+    fi
+
+    log_success "[Zsh] 配置完成"
 }
 
 # =============================================================================
@@ -585,26 +658,29 @@ main() {
     install_git
     echo ""
 
-    # Ghostty 和 Neovim 可以并行
-    log_info "并行安装: Ghostty | Neovim"
-    init_parallel
-    pids=()
-    pids+=("$(run_parallel "ghostty" "install_ghostty")")
-    pids+=("$(run_parallel "nvim" "setup_nvim")")
-
+    # Ghostty 安装（并行）
+    log_info "安装 Ghostty 终端..."
+    install_ghostty
     echo ""
-    log_info "开发工具安装中..."
 
-    if ! wait_parallel "${pids[@]}"; then
-        log_warn "部分开发工具安装失败..."
-    fi
+    # Neovim 配置（串行，步骤复杂，需要看到详细输出）
+    log_info "=========================================="
+    log_info "配置 Neovim 环境"
+    log_info "=========================================="
+    setup_nvim
     echo ""
 
     # 步骤4: 配置 Ghostty（依赖 Neovim 配置仓库）
+    log_info "=========================================="
+    log_info "配置 Ghostty"
+    log_info "=========================================="
     setup_ghostty_config
     echo ""
 
     # 步骤5: 配置 Zsh（依赖前面的所有工具）
+    log_info "=========================================="
+    log_info "配置 Zsh"
+    log_info "=========================================="
     setup_zsh
     echo ""
 
