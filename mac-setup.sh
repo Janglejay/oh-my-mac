@@ -59,22 +59,44 @@ init_parallel() {
     export RESULTS_DIR
 }
 
-# 运行并行任务
+# 带前缀输出的函数
+prefix_output() {
+    local prefix="$1"
+    local color="$2"
+    while IFS= read -r line; do
+        echo -e "${color}[$prefix]${NC} $line"
+    done
+}
+
+# 运行并行任务（带实时进度显示）
 run_parallel() {
     local name="$1"
     shift
     local cmd="$@"
     local result_file="$RESULTS_DIR/$name.result"
     local log_file="$RESULTS_DIR/$name.log"
+    local color="${BLUE}"
+
+    # 为不同任务分配不同颜色
+    case "$name" in
+        raycast) color="${BLUE}" ;;
+        chrome) color="${GREEN}" ;;
+        edge) color="${BLUE}" ;;
+        snipaste) color="${YELLOW}" ;;
+        karabiner) color="${RED}" ;;
+        ghostty) color="${GREEN}" ;;
+        nvim) color="${YELLOW}" ;;
+        *) color="${BLUE}" ;;
+    esac
 
     {
-        echo "=== $name 开始 ===" >> "$log_file"
-        if eval "$cmd" >> "$log_file" 2>&1; then
+        echo "=== $name 开始安装 ===" | prefix_output "$name" "$color"
+        if eval "$cmd" 2>&1 | tee -a "$log_file" | prefix_output "$name" "$color"; then
             echo "SUCCESS" > "$result_file"
-            echo "=== $name 成功 ===" >> "$log_file"
+            echo "=== $name 安装成功 ===" | prefix_output "$name" "$color"
         else
             echo "FAILED" > "$result_file"
-            echo "=== $name 失败 ===" >> "$log_file"
+            echo "=== $name 安装失败 ===" | prefix_output "$name" "$color"
         fi
     } &
 
@@ -85,7 +107,6 @@ run_parallel() {
 wait_parallel() {
     local pids="$@"
     local failed_tasks=()
-    local all_outputs=()
 
     log_info "等待所有安装任务完成..."
     wait
@@ -107,8 +128,8 @@ wait_parallel() {
             log_error "$name: 失败"
             failed_tasks+=("$name")
             echo ""
-            echo "--- $name 错误日志 ---"
-            tail -20 "$log_file"
+            echo "--- $name 错误日志 (最后20行) ---"
+            tail -20 "$log_file" 2>/dev/null || echo "无日志"
             echo "---"
         fi
     done
@@ -532,7 +553,8 @@ main() {
 
     # 步骤2: 并行安装独立的应用程序（浏览器、工具等）
     log_info "=========================================="
-    log_info "并行安装应用程序（最多5个同时下载）"
+    log_info "并行安装应用程序（5个任务同时运行）"
+    log_info "任务: Raycast | Chrome | Edge | Snipaste | Karabiner"
     log_info "=========================================="
     init_parallel
 
@@ -543,6 +565,10 @@ main() {
     pids+=("$(run_parallel "edge" "install_edge")")
     pids+=("$(run_parallel "snipaste" "install_snipaste")")
     pids+=("$(run_parallel "karabiner" "install_karabiner")")
+
+    echo ""
+    log_info "所有任务已启动，正在并行下载安装中..."
+    log_info ""
 
     # 等待并行任务完成
     if ! wait_parallel "${pids[@]}"; then
@@ -560,10 +586,14 @@ main() {
     echo ""
 
     # Ghostty 和 Neovim 可以并行
+    log_info "并行安装: Ghostty | Neovim"
     init_parallel
     pids=()
     pids+=("$(run_parallel "ghostty" "install_ghostty")")
     pids+=("$(run_parallel "nvim" "setup_nvim")")
+
+    echo ""
+    log_info "开发工具安装中..."
 
     if ! wait_parallel "${pids[@]}"; then
         log_warn "部分开发工具安装失败..."
