@@ -349,3 +349,6 @@ export SDKMAN_DIR="$HOME/.sdkman"
 
 # MOA 扩展配置加载
 source ~/.moaextrc
+
+
+alias la='ls -alh'
