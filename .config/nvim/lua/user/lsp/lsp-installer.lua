@@ -1,45 +1,58 @@
-local status_ok, lsp_installer = pcall(require, "nvim-lsp-installer")
-if not status_ok then
-	return
+-- Mason + Mason-LSPConfig for Neovim 0.12+
+-- LSP servers installed by mason, configured via vim.lsp.config
+local mason_ok, mason = pcall(require, "mason")
+if not mason_ok then
+  vim.notify("mason.nvim not found, please run :PackerSync", vim.log.levels.ERROR)
+  return
 end
 
-local servers = {
-	"pyright",
-}
-
-for _, name in pairs(servers) do
-	local server_available, server = lsp_installer.get_server(name)
-	if server_available and server and not server:is_installed() then
-		server:install()
-	end
+local mason_lspconfig_ok, mason_lspconfig = pcall(require, "mason-lspconfig")
+if not mason_lspconfig_ok then
+  vim.notify("mason-lspconfig.nvim not found, please run :PackerSync", vim.log.levels.ERROR)
+  return
 end
 
--- Register a handler that will be called for all installed servers.
--- Alternatively, you may also register handlers on specific server instances instead (see example below).
-lsp_installer.on_server_ready(function(server)
-	local opts = {
-		on_attach = require("user.lsp.handlers").on_attach,
-		capabilities = require("user.lsp.handlers").capabilities,
-	}
+-- Mason: install LSP servers, linters, formatters
+mason.setup({
+  ui = {
+    border = "rounded",
+    icons = {
+      package_installed = "✓",
+      package_pending = "➜",
+      package_uninstalled = "✗",
+    },
+  },
+  log_level = vim.log.levels.INFO,
+  max_concurrent_installers = 4,
+})
 
-	 if server.name == "jsonls" then
-	 	local jsonls_opts = require("user.lsp.settings.jsonls")
-	 	opts = vim.tbl_deep_extend("force", jsonls_opts, opts)
-	 end
+-- Mason-LSPConfig: auto-register servers with vim.lsp.config
+local lsp_servers = { "pyright", "jdtls" }
+mason_lspconfig.setup({
+  ensure_installed = lsp_servers,
+  automatic_installation = true,
+})
 
+-- vim.lsp.config (Neovim 0.11+/0.12 native LSP config)
+vim.lsp.config('pyright', {
+  settings = {
+    python = {
+      analysis = {
+        autoSearchPaths = true,
+        diagnosticMode = "openFilesOnly",
+        typeCheckingMode = "basic",
+      },
+    },
+  },
+})
 
-	 if server.name == "sumneko_lua" then
-	 	local sumneko_opts = require("user.lsp.settings.sumneko_lua")
-	 	opts = vim.tbl_deep_extend("force", sumneko_opts, opts)
-	 end
+vim.lsp.config('jdtls', {
+  cmd = { "jdtls" },
+  root_dir = function()
+    return vim.fs.root(0, { "pom.xml", "build.gradle", ".git", "mvnw", "gradlew" }) or vim.fn.getcwd()
+  end,
+})
 
-	 if server.name == "pyright" then
-	 	local pyright_opts = require("user.lsp.settings.pyright")
-	 	opts = vim.tbl_deep_extend("force", pyright_opts, opts)
-	 end
-
-
-	-- This setup() function is exactly the same as lspconfig's setup function.
-	-- Refer to https://github.com/neovim/nvim-lspconfig/blob/master/doc/server_configurations.md
-	server:setup(opts)
-end)
+-- vim.lsp.enable starts registered servers
+vim.lsp.enable('pyright')
+vim.lsp.enable('jdtls')

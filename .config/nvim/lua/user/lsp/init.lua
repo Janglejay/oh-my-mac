@@ -1,8 +1,11 @@
-local status_ok, _ = pcall(require, "lspconfig")
-if not status_ok then
-  return
-end
+-- LSP configuration using Neovim 0.11+ native vim.lsp.config
+-- No longer requires lspconfig module
 
-require "user.lsp.lsp-installer"
+-- Setup handlers (diagnostic signs, keymaps, etc.)
 require("user.lsp.handlers").setup()
-require "user.lsp.null-ls"
+
+-- Mason + vim.lsp.config for LSP server management
+require("user.lsp.lsp-installer")
+
+-- Conform.nvim for formatting (replaces null-ls.nvim)
+require("user.lsp.conform")

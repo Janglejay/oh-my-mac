@@ -1,88 +1,169 @@
 local opts = { noremap = true, silent = true }
-
 local term_opts = { silent = true }
-
--- Shorten function name
 local keymap = vim.api.nvim_set_keymap
 
---Remap space as leader key
--- keymap("", "<Space>", "<Nop>", opts)
--- keymap("", ",", "<Nop>", opts)
+-- ====================
+-- Leader Key
+-- ====================
+vim.g.mapleader = ","
+vim.g.maplocalleader = ","
 
--- vim.g.mapleader = ","
--- vim.g.maplocalleader = ","
+-- ====================
+-- 基础按键映射 (来自 .vimrc)
+-- ====================
 
--- Modes
---   normal_mode = "n",
---   insert_mode = "i",
---   visual_mode = "v",
---   visual_block_mode = "x",
---   term_mode = "t",
---   command_mode = "c",
+-- ESC delay 设置 (timoutlen=500, ttimeoutlen=0 在 options.lua 中)
+vim.opt.ttimeoutlen = 0
 
--- Normal --
--- Better window navigation
--- keymap("n", "<C-h>", "<C-w>h", opts)
--- keymap("n", "<C-j>", "<C-w>j", opts)
--- keymap("n", "<C-k>", "<C-w>k", opts)
--- keymap("n", "<C-l>", "<C-w>l", opts)
+-- Normal 模式
+keymap("n", "q", "<NOP>", opts)          -- 禁用 q
+keymap("n", "\\", "q", opts)              -- \ 代替 q
+keymap("n", "U", ":redo<CR>", opts)       -- U 重做
+keymap("n", "<C-e>", "<C-d>", opts)       -- Ctrl+e 向下半页
+keymap("n", "<C-r>", "<C-u>", opts)       -- Ctrl+r 向上半页
+keymap("n", "<CR>", ";", opts)            -- 回车变为 ;
+keymap("n", "vv", "<S-v>", opts)          -- vv 选中整行
+keymap("n", "go", "gi", opts)             -- go 跳到上次插入位置并进入插入模式
 
--- Resize with arrows
--- keymap("n", "<C-Up>", ":resize -2<CR>", opts)
--- keymap("n", "<C-Down>", ":resize +2<CR>", opts)
--- keymap("n", "<C-Left>", ":vertical resize -2<CR>", opts)
--- keymap("n", "<C-Right>", ":vertical resize +2<CR>", opts)
+-- 翻页 (以空行为段落)
+keymap("n", "J", "}", opts)               -- J 跳到下一段
+keymap("n", "K", "{", opts)                -- K 跳到上一段
 
--- Navigate buffers
-keymap("n", "R", ":bnext<CR>", opts)
+-- Leader 快捷键
+keymap("n", "<Leader>j", "*", opts)        -- 搜索当前词
+keymap("n", "<Leader>k", "#", opts)        -- 反向搜索
+keymap("n", "W", "b", opts)                -- W 跳词
+keymap("n", "zc", "zz", opts)
+keymap("n", "zz", "zc", opts)
+keymap("n", "zZ", "zM", opts)
+keymap("n", "zO", "zR", opts)
 
-keymap("n", "E", ":bprevious<CR>", opts)
-keymap("n", "=", "<cmd>lua vim.lsp.buf.format({ async = true })<cr>", opts)
+-- 移动
+keymap("n", "L", "<End>", opts)           -- L 跳到行尾
+keymap("n", "H", "^", opts)                -- H 跳到行首
+keymap("n", "gn", "%", opts)               -- gn 跳到匹配括号
 
+-- Edit 快捷键
+keymap("n", "{", "$a {<CR>}<Esc>O", opts) -- { 补 {}
+
+-- Buffer 操作
+keymap("n", "R", ":bnext<CR>", opts)      -- R 下一个 buffer
+keymap("n", "E", ":bprevious<CR>", opts)   -- E 上一个 buffer
+
+-- Window 导航
+keymap("n", "gh", "<C-w>h", opts)
+keymap("n", "gj", "<C-w>j", opts)
+keymap("n", "gk", "<C-w>k", opts)
+keymap("n", "gl", "<C-w>l", opts)
+
+-- 分割窗口
+keymap("n", "sV", ":sp<CR>", opts)
+keymap("n", "sv", ":vs<CR>", opts)
+
+-- Tab 操作
+keymap("n", "<Tab>", ">>", opts)          -- Tab 右缩进
+keymap("n", "<BS>", "<<", opts)           -- Backspace 左缩进
+keymap("v", "<Tab>", ">", opts)
+keymap("v", "<BS>", "<", opts)
+
+-- ====================
+-- 搜索
+-- ====================
+keymap("n", "<Leader>n", ":nohlsearch<CR>", opts)  -- 取消高亮
+
+-- ====================
+-- 复制粘贴 (来自 .vimrc)
+-- ====================
+keymap("n", "Y", "gg^yG<End>", opts)      -- Y 复制整行
+keymap("n", "<Leader>v", "gg^vG<End>", opts) -- 全选
+keymap("n", "<Leader>d", "\"_d", opts)     -- 删除到黑洞寄存器
+keymap("n", "x", "\"_x", opts)             -- x 删除字符
+keymap("n", "c", "\"_c", opts)             -- c 修改
+keymap("n", "cc", "\"_cc", opts)           -- cc 删除当前行进入插入
+keymap("n", "s", "\"_s", opts)             -- s 删除字符进入插入
+keymap("v", "p", "\"_dP", opts)            -- v 模式 p 粘贴到前面
+keymap("n", "<Leader>y", "\"_y", opts)     -- y 复制到黑洞
+keymap("n", "<Leader>r", 'viw"_dP', opts)  -- 替换当前词
+
+-- ====================
+-- Git / Hunk 操作
+-- ====================
 keymap("n", "<C-u>", "<cmd>lua require 'gitsigns'.reset_hunk()<cr>", opts)
 keymap("n", "gp", "<cmd>lua require 'gitsigns'.preview_hunk()<cr>", opts)
 keymap("n", "<C-f>", "<cmd>lua require 'gitsigns'.prev_hunk()<cr>", opts)
 keymap("n", "<C-d>", "<cmd>lua require 'gitsigns'.next_hunk()<cr>", opts)
 
--- keymap("n", "gk", "<cmd>lua require 'gitsigns'.prev_hunk()<cr>", opts)
--- keymap("n", "gj", "<cmd>lua require 'gitsigns'.next_hunk()<cr>", opts)
--- keymap("n", "ma", "<cmd>Telescope vim_bookmarks current_file<cr>", opts)
+-- ====================
+-- Telescope / Bookmarks
+-- ====================
 keymap("n", "ma", "<cmd>Telescope vim_bookmarks all<cr>", opts)
 keymap("n", "<C-n>", "<C-i>", opts)
+
+-- ====================
+-- Terminal
+-- ====================
 keymap("n", "st", "<cmd>ToggleTerm direction=horizontal<cr>", opts)
 
--- keymap("n", "<C-[>", "<C-i>", opts)
--- keymap("n", "<Leader>q", ":bdelete<CR>", opts)
+-- ====================
+-- LSP Format
+-- ====================
+keymap("n", "=", "<cmd>lua vim.lsp.buf.format({ async = true })<cr>", opts)
 
+-- ====================
+-- Insert 模式
+-- ====================
+keymap("i", "jk", "<ESC>", opts)          -- jk 退出插入模式
 
--- Move text up and down
--- keymap("n", "<A-j>", "<Esc>:m .+1<CR>==gi", opts)
--- keymap("n", "<A-k>", "<Esc>:m .-2<CR>==gi", opts)
+-- ====================
+-- Visual 模式
+-- ====================
+keymap("v", "U", "~", opts)                -- U 大写
+keymap("v", "~", "<Nop>", opts)
+keymap("v", "u", "<ESC>", opts)            -- u 小写
 
--- Insert --
--- Press jk fast to enter
--- keymap("i", "jk", "<ESC>", opts)
+-- ====================
+-- 来自 .vimrc 的全局 buffer-local 映射
+-- ====================
+-- 这些通过 autocmd 在特定文件类型上设置
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "java", "rust", "lua", "go" },
+  callback = function()
+    vim.api.nvim_buf_set_keymap(0, "n", ";", "$a;<Esc>", { noremap = true, silent = true })
+    vim.api.nvim_buf_set_keymap(0, "n", "{", "$a {<CR>}<Esc>O", { noremap = true, silent = true })
+  end,
+})
 
--- Visual --
--- Stay in indent mode
--- keymap("v", "<", "<gv", opts)
--- keymap("v", ">", ">gv", opts)
+-- Rust 特有
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "rust" },
+  callback = function()
+    vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>TermExec cmd=\"cargo run\" dir=\".\"<CR>", { noremap = true, silent = true })
+    vim.api.nvim_buf_set_keymap(0, "n", "zb", "<cmd>w<CR><cmd>TermExec cmd=\"cargo build\" dir=\".\"<CR>", { noremap = true, silent = true })
+    vim.api.nvim_buf_set_keymap(0, "n", "zc", "<cmd>w<CR><cmd>TermExec cmd=\"cargo check\" dir=\".\"<CR>", { noremap = true, silent = true })
+    vim.api.nvim_buf_set_keymap(0, "n", "zR", "<cmd>w<CR><cmd>RustRun<CR>", { noremap = true, silent = true })
+  end,
+})
 
--- Move text up and down
--- keymap("v", "<A-j>", ":m .+1<CR>==", opts)
--- keymap("v", "<A-k>", ":m .-2<CR>==", opts)
--- keymap("v", "p", '"_dP', opts)
+-- Lua 特有
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "lua" },
+  callback = function()
+    vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>!lua %<CR>", { noremap = true, silent = true })
+  end,
+})
 
--- Visual Block --
--- Move text up and down
--- keymap("x", "J", ":move '>+1<CR>gv-gv", opts)
--- keymap("x", "K", ":move '<-2<CR>gv-gv", opts)
--- keymap("x", "<A-j>", ":move '>+1<CR>gv-gv", opts)
--- keymap("x", "<A-k>", ":move '<-2<CR>gv-gv", opts)
-
--- Terminal --
--- Better terminal navigation
--- keymap("t", "<C-h>", "<C-\\><C-N><C-w>h", term_opts)
--- keymap("t", "<C-j>", "<C-\\><C-N><C-w>j", term_opts)
--- keymap("t", "<C-k>", "<C-\\><C-N><C-w>k", term_opts)
--- keymap("t", "<C-l>", "<C-\\><C-N><C-w>l", term_opts)
+-- Markdown 特有
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = { "markdown" },
+  callback = function()
+    local mopts = { noremap = true, silent = true, buffer = 0 }
+    vim.keymap.set("n", "<Leader>x", "/<++><CR>:nohl<CR>4\"-cl", mopts)
+    vim.keymap.set("n", "<Leader>C", "i```<CR><++><CR>```<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>c", "i`<++>`<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>b", "i**<++>**<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>s", "i~~<++>~~<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>o", "i[<++>](<++>)<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>O", "i![<++>](<++>)<Esc>", mopts)
+    vim.keymap.set("n", "<Leader>m", "i- [<Space>]<Esc>", mopts)
+  end,
+})

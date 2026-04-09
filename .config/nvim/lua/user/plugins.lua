@@ -59,13 +59,7 @@ return packer.startup(function(use)
   use "folke/which-key.nvim"
 
   -- Colorschemes
-  -- use "lunarvim/colorschemes" -- A bunch of colorschemes you can try out
   use "lunarvim/darkplus.nvim"
-  -- use "lunarvim/colorschemes"
-  -- use({
-  --   "catppuccin/nvim",
-  --   as = "catppuccin"
-  -- })
   use 'tanvirtin/monokai.nvim'
   use 'morhetz/gruvbox'
 
@@ -85,10 +79,13 @@ return packer.startup(function(use)
 
   -- LSP
   use "neovim/nvim-lspconfig" -- enable LSP
-  use "williamboman/nvim-lsp-installer" -- simple to use language server installer
+  use "williamboman/mason.nvim" -- language server installer
+  use "williamboman/mason-lspconfig.nvim" -- mason + lspconfig integration
   use "tamago324/nlsp-settings.nvim" -- language server settings defined in json for
-  use "jose-elias-alvarez/null-ls.nvim" -- for formatters and linters
-  use "ray-x/lsp_signature.nvim"
+  use "ray-x/lsp_signature.nvim" -- LSP signature hint
+
+  -- Formatter (replaces null-ls for Neovim 0.12+)
+  use "stevearc/conform.nvim"
 
   -- Telescope
   use "nvim-telescope/telescope.nvim"
@@ -109,9 +106,6 @@ return packer.startup(function(use)
 
   -- todo
   use "folke/todo-comments.nvim"
-  -- markdown
-  -- use "iamcco/markdown-preview.nvim"
-  -- use "rust-lang/rust.vim"
 
   -- Automatically set up your configuration after cloning packer.nvim
   -- Put this at the end after all plugins

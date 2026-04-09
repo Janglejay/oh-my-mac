@@ -1,5 +1,6 @@
 require "user.options"
 require "user.keymaps"
+require "user.vim-compat" -- 迁移自 .vimrc 的兼容配置
 require "user.plugins"
 require "user.colorscheme"
 require "user.transparency"
