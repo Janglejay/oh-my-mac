@@ -1,0 +1,115 @@
+# Starship 配置文件
+# 文档: https://starship.rs/config/
+
+# 提示符格式
+format = """
+$username$hostname$directory$git_branch$git_status$java$nodejs$python$cmd_duration$line_break$character"""
+
+# 使用 Nerd Font 图标
+[character]
+success_symbol = "[➜](bold green)"
+error_symbol = "[✗](bold red)"
+vimcmd_symbol = "[❮](bold green)"
+
+# 用户名显示
+[username]
+style_user = "white bold"
+style_root = "red bold"
+format = "[$user]($style)"
+disabled = false
+show_always = false
+
+# 主机名显示
+[hostname]
+ssh_only = true
+format = "[@$hostname](bold yellow) "
+disabled = false
+
+# 目录显示
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+format = "[$path]($style)[$read_only]($read_only_style) "
+style = "cyan bold"
+read_only = " 🔒"
+read_only_style = "red"
+
+# Git 分支显示
+[git_branch]
+symbol = " "
+format = "on [$symbol$branch(:$remote_branch)]($style) "
+truncation_length = 20
+truncation_symbol = "…"
+style = "purple bold"
+
+# Git 状态显示
+[git_status]
+format = '([$all_status$ahead_behind]($style)) '
+conflicted = "=${count} "
+ahead = "⇡${count} "
+behind = "⇣${count} "
+diverged = "⇕⇡${ahead_count}⇣${behind_count} "
+untracked = "?${count} "
+stashed = "\\$${count} "
+modified = "!${count} "
+staged = "+${count} "
+renamed = "»${count} "
+deleted = "✘${count} "
+style = "red bold"
+
+# Java 显示
+[java]
+symbol = " "
+style = "red dimmed"
+format = "via [$symbol($version )]($style)"
+detect_extensions = ["java", "class", "gradle", "jar", "cljs", "cljc"]
+detect_files = ["pom.xml", "build.gradle.kts", "build.sbt", ".java-version", "deps.edn", "project.clj", "build.boot"]
+
+# Node.js 显示
+[nodejs]
+symbol = " "
+style = "green bold"
+format = "via [$symbol($version )]($style)"
+detect_extensions = ["js", "mjs", "cjs", "ts", "mts", "cts"]
+detect_files = ["package.json", ".node-version"]
+detect_folders = ["node_modules"]
+
+# Python 显示
+[python]
+symbol = " "
+style = "yellow bold"
+format = 'via [$symbol$pyenv_prefix($version )(\($virtualenv\) )]($style)'
+detect_extensions = ["py", "ipynb", "pyz"]
+detect_files = ["requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "Pipfile", ".python-version"]
+detect_folders = [".venv", "venv", "env"]
+
+# 命令执行时间
+[cmd_duration]
+min_time = 500
+format = "took [$duration](bold yellow) "
+style = "bold yellow"
+
+# 禁用不需要的模块
+[package]
+disabled = true
+
+[docker_context]
+disabled = true
+
+[conda]
+disabled = true
+
+[dotnet]
+disabled = true
+
+[golang]
+disabled = true
+
+[lua]
+disabled = true
+
+[ruby]
+disabled = true
+
+[rust]
+disabled = true
