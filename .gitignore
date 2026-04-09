@@ -4,3 +4,5 @@
 .auto_push.sh
 **/test.*
 gitsigns_issue
+.config/clash/
+.config/cmux/
