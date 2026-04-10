@@ -12,18 +12,16 @@
 │   ├── karabiner/               # Karabiner 键盘配置
 │   ├── raycast/                 # Raycast 配置
 │   └── starship.toml            # Starship 提示符配置
-├── .zshrc                       # Zsh 配置
+├── .zshrc                       # Zsh 配置（不通过软链接管理）
 ├── deploy.sh                    # 一键部署脚本
 └── README.md                    # 使用说明
 
-~/.config/                       (用户配置目录)
+~/.config/                       (用户配置目录 - 软链接)
 ├── nvim -> ~/.vim/.config/nvim
 ├── ghostty -> ~/.vim/.config/ghostty
 ├── karabiner -> ~/.vim/.config/karabiner
 ├── raycast -> ~/.vim/.config/raycast
 └── starship.toml -> ~/.vim/.config/starship.toml
-
-~/.zshrc -> ~/.vim/.zshrc
 ```
 
 ## 快速开始
@@ -40,8 +38,6 @@ cd ~/.vim && ./deploy.sh
 # 3. 安装依赖
 brew install starship
 
-# 4. 重新加载配置
-source ~/.zshrc
 ```
 
 ### 手动创建软链接
@@ -56,8 +52,9 @@ ln -sf ~/.vim/.config/ghostty ~/.config/ghostty
 ln -sf ~/.vim/.config/karabiner ~/.config/karabiner
 ln -sf ~/.vim/.config/raycast ~/.config/raycast
 ln -sf ~/.vim/.config/starship.toml ~/.config/starship.toml
-ln -sf ~/.vim/.zshrc ~/.zshrc
 ```
+
+**注意**: `.zshrc` 不通过软链接管理，需手动同步
 
 ## 配置管理
 
@@ -66,9 +63,6 @@ ln -sf ~/.vim/.zshrc ~/.zshrc
 直接编辑 `~/.vim/` 下的文件：
 
 ```bash
-# 编辑 zsh 配置
-vim ~/.vim/.zshrc
-
 # 编辑 starship 配置
 vim ~/.vim/.config/starship.toml
 
@@ -95,16 +89,16 @@ git pull
 
 ## 文件说明
 
-| 文件/目录 | 用途 |
-|----------|------|
-| `.zshrc` | Zsh shell 配置，包含别名、环境变量、插件等 |
-| `.config/starship.toml` | Starship 提示符主题配置 |
-| `.config/nvim/` | Neovim 完整配置（Lua） |
-| `.config/ghostty/` | Ghostty 终端模拟器配置 |
-| `.config/karabiner/` | Karabiner-Elements 键盘映射 |
-| `.config/raycast/` | Raycast 启动器配置 |
-| `deploy.sh` | 一键部署脚本 |
-| `SYMLINK_SETUP.md` | 本文档 |
+| 文件/目录 | 用途 | 管理方式 |
+|----------|------|----------|
+| `.config/starship.toml` | Starship 提示符主题配置 | 软链接 |
+| `.config/nvim/` | Neovim 完整配置（Lua） | 软链接 |
+| `.config/ghostty/` | Ghostty 终端模拟器配置 | 软链接 |
+| `.config/karabiner/` | Karabiner-Elements 键盘映射 | 软链接 |
+| `.config/raycast/` | Raycast 启动器配置 | 软链接 |
+| `.zshrc` | Zsh 配置（参考用） | 手动同步 |
+| `deploy.sh` | 一键部署脚本 | - |
+| `SYMLINK_SETUP.md` | 本文档 | - |
 
 ## 备份机制
 
@@ -115,8 +109,7 @@ git pull
 ├── starship.toml
 ├── raycast/
 ├── karabiner/
-├── ghostty/
-└── .zshrc
+└── ghostty/
 ```
 
 ## 注意事项
@@ -149,7 +142,7 @@ rm ~/.config/starship.toml
 rm ~/.config/raycast
 rm ~/.config/karabiner
 rm ~/.config/ghostty
-rm ~/.zshrc
+rm ~/.config/nvim
 
 # 2. 从备份恢复
 cp -r ~/.config/backups-2026*/starship.toml ~/.config/

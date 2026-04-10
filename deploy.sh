@@ -61,11 +61,6 @@ create_backup() {
         fi
     done
 
-    if [ -e "$HOME/.zshrc" ] && [ ! -L "$HOME/.zshrc" ]; then
-        cp "$HOME/.zshrc" "$BACKUP_DIR/"
-        print_warning "已备份: .zshrc"
-    fi
-
     print_success "备份完成: $BACKUP_DIR"
 }
 
@@ -122,17 +117,17 @@ main() {
     create_symlink "$REPO_DIR/.config/karabiner" "$CONFIG_DIR/karabiner" "karabiner"
     create_symlink "$REPO_DIR/.config/ghostty" "$CONFIG_DIR/ghostty" "ghostty"
     create_symlink "$REPO_DIR/.config/nvim" "$CONFIG_DIR/nvim" "nvim"
-    create_symlink "$REPO_DIR/.zshrc" "$HOME/.zshrc" ".zshrc"
 
     echo ""
     echo "========================================"
     print_success "部署完成！"
     echo "========================================"
     echo ""
+    echo "注意: .zshrc 不通过软链接管理，请手动同步"
+    echo ""
     echo "请执行以下操作："
-    echo "  1. 重新打开终端或运行: source ~/.zshrc"
-    echo "  2. 安装必要工具: brew install starship"
-    echo "  3. 验证配置: starship --version"
+    echo "  1. 安装必要工具: brew install starship"
+    echo "  2. 验证配置: starship --version"
     echo ""
     echo "备份位置: $BACKUP_DIR"
 }
