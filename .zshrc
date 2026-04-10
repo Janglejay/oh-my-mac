@@ -28,8 +28,8 @@ eval "$(starship init zsh)"
 # ============================================================================
 
 # Java 主目录：使用 Zulu OpenJDK 8
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home
-export PATH="$JAVA_HOME/bin:$PATH"
+# export JAVA_HOME=/Library/Java/JavaVirtualMachines/zulu-8.jdk/Contents/Home
+# export PATH="$JAVA_HOME/bin:$PATH"
 # 其他 JDK 版本备选：
 # export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_311.jdk/Contents/Home
 # export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk1.8.0_201.jdk/Contents/Home
@@ -38,8 +38,8 @@ export PATH="$JAVA_HOME/bin:$PATH"
 # export JAVA_HOME=/opt/homebrew/opt/openjdk@21
 
 # Maven 主目录：Java 项目构建工具
-export MAVEN_HOME=/opt/homebrew/Cellar/maven/3.9.11
-export PATH=$PATH:$MAVEN_HOME/bin
+# export MAVEN_HOME=/opt/homebrew/Cellar/maven/3.9.11
+# export PATH=$PATH:$MAVEN_HOME/bin
 # 旧版 Maven 路径：
 # export MAVEN_HOME=/opt/maven/apache-maven-3.9.1
 
@@ -49,13 +49,13 @@ export PATH=$PATH:$MAVEN_HOME/bin
 # ============================================================================
 
 # MySQL 主目录配置
-export MYSQL_HOME=/usr/local/mysql
+# export MYSQL_HOME=/usr/local/mysql
 
 # MySQL 5.7 版本路径（通过 Homebrew 安装）
-export PATH="/opt/homebrew/opt/mysql@5.7/bin:$PATH"
+# export PATH="/opt/homebrew/opt/mysql@5.7/bin:$PATH"
 
 # MySQL 5.7 快捷命令别名
-alias mysql5=$MYSQL_HOME/bin/mysql
+# alias mysql5=$MYSQL_HOME/bin/mysql
 
 
 # ============================================================================
@@ -156,20 +156,20 @@ alias vim='nvim'
 # 使用 Neovim 替代 vi
 alias vi='nvim'
 
-# 编辑 JSON 文件快捷命令
-alias ej='source $S/edit_file.sh json'
-
-# 编辑文本文件快捷命令
-alias et='source $S/edit_file.sh txt'
-
-# 编辑 Markdown 文件快捷命令
-alias em='source $S/edit_file.sh md'
-
-# 编辑 Lua 文件快捷命令
-alias el='source $S/edit_file.sh lua'
-
-# 编辑 Shell 脚本快捷命令
-alias es='source $S/edit_file.sh sh'
+# # 编辑 JSON 文件快捷命令
+# alias ej='source $S/edit_file.sh json'
+#
+# # 编辑文本文件快捷命令
+# alias et='source $S/edit_file.sh txt'
+#
+# # 编辑 Markdown 文件快捷命令
+# alias em='source $S/edit_file.sh md'
+#
+# # 编辑 Lua 文件快捷命令
+# alias el='source $S/edit_file.sh lua'
+#
+# # 编辑 Shell 脚本快捷命令
+# alias es='source $S/edit_file.sh sh'
 
 
 # ============================================================================
@@ -177,10 +177,10 @@ alias es='source $S/edit_file.sh sh'
 # ============================================================================
 
 # Git 提交脚本快捷命令（交互式提交）
-alias gcm='source $S/commit.sh'
-
-# Git 提交脚本快捷命令（直接提交）
-alias gcmf='source $S/commit.sh real_commit'
+# alias gcm='source $S/commit.sh'
+#
+# # Git 提交脚本快捷命令（直接提交）
+# alias gcmf='source $S/commit.sh real_commit'
 
 # Git 切换分支快捷命令
 alias gc='git checkout'
@@ -194,7 +194,7 @@ alias gs="git status"
 # ============================================================================
 
 # Tmux 终端复用器快捷启动
-alias t='tmux'
+# alias t='tmux'
 
 # Tree 命令指定层级显示
 alias tl='tree -L'
@@ -205,19 +205,6 @@ alias pc='pbcopy'
 # macOS 系统剪贴板粘贴命令
 alias pp='pbpaste'
 
-
-# ============================================================================
-# 自定义脚本别名
-# ============================================================================
-
-# 格式化日期脚本
-alias sd='source $S/format_date.sh'
-
-# 翻译为中文脚本
-alias tt='source $S/tran.sh zh'
-
-# 翻译为英文脚本
-alias te='source $S/tran.sh en'
 
 
 # ============================================================================
@@ -247,52 +234,6 @@ source /opt/homebrew/Cellar/z/1.9/etc/profile.d/z.sh
 
 # Z 列表命令：显示所有记录的目录及权重
 alias zl='z -l'
-
-
-# ============================================================================
-# AI 工具配置 - CatPaw
-# ============================================================================
-
-# CatPaw CLI 工具路径
-export PATH="/Users/fufangjie/.catpaw/bin:$PATH"
-
-# CatPaw 代码模式基础命令
-alias mtc="mc --code"
-
-# CatPaw 代码模式（跳过权限检查）
-alias mtcc="/usr/local/bin/mc --code --dangerously-skip-permissions --model Claude-Opus-4.5"
-# alias mtcc="/usr/local/bin/mc --code --dangerously-skip-permissions"
-
-# CatPaw CLI 不同 AI 模型别名
-# 参考文档: https://km.sankuai.com/collabpage/2723617394
-
-# LongCat Flash Chat 模型
-alias mcl="mc --code --dangerously-skip-permissions --model LongCat-Flash-Chat"
-
-# Qwen3 Coder FP8 模型（美团版）
-alias mcq="mc --code --dangerously-skip-permissions --model qwen3-coder-fp8-meituan"
-
-# DeepSeek V3.1 模型（美团版）
-alias mcd="mc --code --dangerously-skip-permissions --model deepseek-v31-meituan"
-
-# Kimi K2 预览版模型
-alias mck="mc --code --dangerously-skip-permissions --model kimi-k2-0905-preview"
-
-# GLM-4.7 模型
-alias mcg="mc --code --dangerously-skip-permissions --model glm-4.7"
-
-# DeepSeek Chat 模型
-alias mcdc="mc --code --dangerously-skip-permissions --model deepseek-chat"
-
-# MiniMax M2 模型
-alias mcm="mc --code --dangerously-skip-permissions --model MiniMax-M2.7"
-
-# kimi-k2.5
-alias mck="mc --code --dangerously-skip-permissions --model kimi-k2.5"
-
-# gpt
-alias mcgp="mc --code --dangerously-skip-permissions --model gpt-5.4"
-
 
 
 # ============================================================================
@@ -339,16 +280,9 @@ bindkey -r "^D"
 . "$HOME/.local/bin/env"
 export PATH="$HOME/.local/bin:$PATH"
 
-# GG 应用程序命令行工具路径
-export PATH="/Applications/gg.app/Contents/MacOS:$PATH"
-# alias gg='/Applications/gg.app/Contents/MacOS/gg &'
-
 # SDKMAN 软件开发工具包管理器（必须放在文件末尾）
-export SDKMAN_DIR="$HOME/.sdkman"
-[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
-
-# MOA 扩展配置加载
-source ~/.moaextrc
+# export SDKMAN_DIR="$HOME/.sdkman"
+# [[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
 
 
 alias la='ls -alh'
