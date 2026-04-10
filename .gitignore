@@ -7,3 +7,15 @@ gitsigns_issue
 .config/clash/
 .config/cmux/
 .oh-my-zsh/
+
+# 备份目录
+.config/backups-*/
+backups-*/
+
+# 本地特定配置
+*.local
+.env
+.env.local
+
+# 日志文件
+*.log
