@@ -87,7 +87,7 @@ return packer.startup(function(use)
   -- Formatter (replaces null-ls for Neovim 0.12+)
   use "stevearc/conform.nvim"
 
-  -- Telescope
+  -- Telescope (latest version for Neovim 0.11+)
   use "nvim-telescope/telescope.nvim"
   use "nvim-telescope/telescope-ui-select.nvim"
   use "nvim-telescope/telescope-live-grep-raw.nvim"

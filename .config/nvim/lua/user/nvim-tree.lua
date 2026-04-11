@@ -1,115 +1,108 @@
--- following options are the default
--- each of these are documented in `:help nvim-tree.OPTION_NAME`
-vim.g.nvim_tree_icons = {
-  default = "",
-  symlink = "",
+local status_ok, nvim_tree = pcall(require, "nvim-tree")
+if not status_ok then
+  return
+end
+
+nvim_tree.setup({
+  -- 禁用 netrw（vim 默认文件浏览器）
+  disable_netrw = true,
+  hijack_netrw = true,
+
+  -- 自动重载
+  auto_reload_on_write = true,
+
+  -- 更新当前文件位置
+  update_focused_file = {
+    enable = true,
+    update_cwd = false,
+  },
+
+  -- Git 集成
   git = {
-    unstaged = "",
-    staged = "S",
-    unmerged = "",
-    renamed = "➜",
-    deleted = "",
-    untracked = "U",
-    ignored = "◌",
+    enable = true,
+    ignore = false,
+    timeout = 500,
   },
-  folder = {
-    default = "",
-    open = "",
-    empty = "",
-    empty_open = "",
-    symlink = "",
+
+  -- 文件系统过滤器
+  filters = {
+    dotfiles = false,      -- 显示隐藏文件
+    custom = { ".git", "node_modules", ".cache" },
   },
-}
 
- local status_ok, nvim_tree = pcall(require, "nvim-tree")
- if not status_ok then
-   return
- end
+  -- 视图设置
+  view = {
+    width = 35,
+    side = "left",
+    number = false,
+    relativenumber = false,
+    signcolumn = "yes",
+  },
 
- local config_status_ok, nvim_tree_config = pcall(require, "nvim-tree.config")
- if not config_status_ok then
-   return
- end
+  -- 渲染设置
+  renderer = {
+    indent_markers = {
+      enable = true,
+    },
+    icons = {
+      show = {
+        git = true,
+        folder = true,
+        file = true,
+        folder_arrow = true,
+      },
+      glyphs = {
+        default = "",
+        symlink = "",
+        git = {
+          unstaged = "",
+          staged = "S",
+          unmerged = "",
+          renamed = "➜",
+          deleted = "",
+          untracked = "U",
+          ignored = "◌",
+        },
+        folder = {
+          default = "",
+          open = "",
+          empty = "",
+          empty_open = "",
+          symlink = "",
+        },
+      },
+    },
+  },
 
- local tree_cb = nvim_tree_config.nvim_tree_callback
+  -- 操作行为
+  actions = {
+    open_file = {
+      quit_on_open = false,     -- 打开文件时不关闭 tree
+      resize_window = true,
+      window_picker = {
+        enable = false,
+      },
+    },
+  },
 
--- setup with all defaults
--- each of these are documented in `:help nvim-tree.OPTION_NAME`
+  -- 诊断信息
+  diagnostics = {
+    enable = true,
+    show_on_dirs = true,
+    icons = {
+      hint = "",
+      info = "",
+      warning = "",
+      error = "",
+    },
+  },
 
- nvim_tree.setup {
-   -- disable_netrw = true,
-   -- hijack_netrw = true,
-   -- open_on_setup = false,
-   -- ignore_ft_on_setup = {
-   --   -- "startify",
-   --   -- "dashboard",
-   --   "alpha",
-   -- },
-   -- auto_close = false,
-   -- open_on_tab = false,
-   -- hijack_cursor = false,
-   -- update_cwd = false,
-   -- update_to_buf_dir = {
-   --   enable = true,
-   --   auto_open = true,
-   -- },
-   -- diagnostics = {
-   --   enable = true,
-   --   icons = {
-   --     hint = "",
-   --     info = "",
-   --     warning = "",
-   --     error = "",
-   --   },
-   -- },
-   -- update_focused_file = {
-   --   enable = true,
-   --   update_cwd = true,
-   --   ignore_list = {},
-   -- },
-   -- system_open = {
-   --   cmd = nil,
-   --   args = {},
-   -- },
-   -- filters = {
-   --   dotfiles = false,
-   --   custom = {'.git', '.gitattributes'},
-   -- },
-   -- git = {
-   --   enable = true,
-   --   ignore = true,
-   --   timeout = 500,
-   -- },
-   -- view = {
-   --   width = 30,
-   --   height = 30,
-   --   hide_root_folder = false,
-   --   side = "left",
-   --   auto_resize = true,
-   --   mappings = {
-   --     custom_only = false,
-   --     list = {
-   --       { key = { "l", "<CR>", "o" }, cb = tree_cb "edit" },
-   --       { key = "h", cb = tree_cb "close_node" },
-   --       { key = "v", cb = tree_cb "vsplit" },
-   --     },
-   --   },
-   --   number = false,
-   --   relativenumber = false,
-   -- },
-   -- trash = {
-   --   cmd = "trash",
-   --   require_confirm = true,
-   -- },
-   -- quit_on_open = 0,
-   -- git_hl = 1,
-   -- disable_window_picker = 0,
-   -- root_folder_modifier = ":t",
-   -- show_icons = {
-   --   git = 1,
-   --   folders = 1,
-   --   files = 1,
-   --   folder_arrows = 1,
-   --   tree_width = 30,
-   -- },
- }
+  -- 文件修改监控
+  filesystem_watchers = {
+    enable = true,
+  },
+})
+
+-- 快捷键
+vim.keymap.set('n', '<leader>e', ':NvimTreeToggle<CR>', { noremap = true, silent = true, desc = 'Toggle file tree' })
+vim.keymap.set('n', '<leader>f', ':NvimTreeFindFile<CR>', { noremap = true, silent = true, desc = 'Find current file in tree' })

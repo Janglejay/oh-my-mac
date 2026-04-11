@@ -35,13 +35,20 @@ M.setup = function()
 
   vim.diagnostic.config(config)
 
-  vim.lsp.handlers["textDocument/hover"] = vim.lsp.with(vim.lsp.handlers.hover, {
-    border = "rounded",
-  })
+  -- Neovim 0.11+: vim.lsp.with is deprecated, use direct handler assignment with wrapper
+  local orig_hover = vim.lsp.handlers.hover
+  vim.lsp.handlers.hover = function(err, result, ctx, config)
+    config = config or {}
+    config.border = config.border or "rounded"
+    return orig_hover(err, result, ctx, config)
+  end
 
-  vim.lsp.handlers["textDocument/signatureHelp"] = vim.lsp.with(vim.lsp.handlers.signature_help, {
-    border = "rounded",
-  })
+  local orig_signature = vim.lsp.handlers.signature_help
+  vim.lsp.handlers.signature_help = function(err, result, ctx, config)
+    config = config or {}
+    config.border = config.border or "rounded"
+    return orig_signature(err, result, ctx, config)
+  end
 end
 
 local function lsp_highlight_document(client)

@@ -1,5 +1,5 @@
--- Mason + Mason-LSPConfig for Neovim 0.12+
--- LSP servers installed by mason, configured via vim.lsp.config
+-- Mason + Mason-LSPConfig for Neovim 0.11+
+-- LSP servers installed by mason, configured via vim.lsp.config (native API)
 local mason_ok, mason = pcall(require, "mason")
 if not mason_ok then
   vim.notify("mason.nvim not found, please run :PackerSync", vim.log.levels.ERROR)
@@ -33,8 +33,8 @@ mason_lspconfig.setup({
   automatic_installation = true,
 })
 
--- vim.lsp.config (Neovim 0.11+/0.12 native LSP config)
-vim.lsp.config('pyright', {
+-- vim.lsp.config (Neovim 0.11+ native LSP config API)
+vim.lsp.config("pyright", {
   settings = {
     python = {
       analysis = {
@@ -46,7 +46,7 @@ vim.lsp.config('pyright', {
   },
 })
 
-vim.lsp.config('jdtls', {
+vim.lsp.config("jdtls", {
   cmd = { "jdtls" },
   root_dir = function()
     return vim.fs.root(0, { "pom.xml", "build.gradle", ".git", "mvnw", "gradlew" }) or vim.fn.getcwd()
@@ -54,5 +54,5 @@ vim.lsp.config('jdtls', {
 })
 
 -- vim.lsp.enable starts registered servers
-vim.lsp.enable('pyright')
-vim.lsp.enable('jdtls')
+vim.lsp.enable("pyright")
+vim.lsp.enable("jdtls")

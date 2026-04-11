@@ -125,45 +125,45 @@ keymap("v", "u", "<ESC>", opts)            -- u 小写
 -- 来自 .vimrc 的全局 buffer-local 映射
 -- ====================
 -- 这些通过 autocmd 在特定文件类型上设置
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "java", "rust", "lua", "go" },
-  callback = function()
-    vim.api.nvim_buf_set_keymap(0, "n", ";", "$a;<Esc>", { noremap = true, silent = true })
-    vim.api.nvim_buf_set_keymap(0, "n", "{", "$a {<CR>}<Esc>O", { noremap = true, silent = true })
-  end,
-})
-
--- Rust 特有
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "rust" },
-  callback = function()
-    vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>TermExec cmd=\"cargo run\" dir=\".\"<CR>", { noremap = true, silent = true })
-    vim.api.nvim_buf_set_keymap(0, "n", "zb", "<cmd>w<CR><cmd>TermExec cmd=\"cargo build\" dir=\".\"<CR>", { noremap = true, silent = true })
-    vim.api.nvim_buf_set_keymap(0, "n", "zc", "<cmd>w<CR><cmd>TermExec cmd=\"cargo check\" dir=\".\"<CR>", { noremap = true, silent = true })
-    vim.api.nvim_buf_set_keymap(0, "n", "zR", "<cmd>w<CR><cmd>RustRun<CR>", { noremap = true, silent = true })
-  end,
-})
-
--- Lua 特有
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "lua" },
-  callback = function()
-    vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>!lua %<CR>", { noremap = true, silent = true })
-  end,
-})
-
--- Markdown 特有
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "markdown" },
-  callback = function()
-    local mopts = { noremap = true, silent = true, buffer = 0 }
-    vim.keymap.set("n", "<Leader>x", "/<++><CR>:nohl<CR>4\"-cl", mopts)
-    vim.keymap.set("n", "<Leader>C", "i```<CR><++><CR>```<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>c", "i`<++>`<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>b", "i**<++>**<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>s", "i~~<++>~~<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>o", "i[<++>](<++>)<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>O", "i![<++>](<++>)<Esc>", mopts)
-    vim.keymap.set("n", "<Leader>m", "i- [<Space>]<Esc>", mopts)
-  end,
-})
+--[[ vim.api.nvim_create_autocmd("FileType", { ]]
+--[[   pattern = { "java", "rust", "lua", "go" }, ]]
+--[[   callback = function() ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", ";", "$a;<Esc>", { noremap = true, silent = true }) ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "{", "$a {<CR>}<Esc>O", { noremap = true, silent = true }) ]]
+--[[   end, ]]
+--[[ }) ]]
+--[[]]
+--[[ -- Rust 特有 ]]
+--[[ vim.api.nvim_create_autocmd("FileType", { ]]
+--[[   pattern = { "rust" }, ]]
+--[[   callback = function() ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>TermExec cmd=\"cargo run\" dir=\".\"<CR>", { noremap = true, silent = true }) ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "zb", "<cmd>w<CR><cmd>TermExec cmd=\"cargo build\" dir=\".\"<CR>", { noremap = true, silent = true }) ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "zc", "<cmd>w<CR><cmd>TermExec cmd=\"cargo check\" dir=\".\"<CR>", { noremap = true, silent = true }) ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "zR", "<cmd>w<CR><cmd>RustRun<CR>", { noremap = true, silent = true }) ]]
+--[[   end, ]]
+--[[ }) ]]
+--[[]]
+--[[ -- Lua 特有 ]]
+--[[ vim.api.nvim_create_autocmd("FileType", { ]]
+--[[   pattern = { "lua" }, ]]
+--[[   callback = function() ]]
+--[[     vim.api.nvim_buf_set_keymap(0, "n", "zr", "<cmd>w<CR><cmd>!lua %<CR>", { noremap = true, silent = true }) ]]
+--[[   end, ]]
+--[[ }) ]]
+--[[]]
+--[[ -- Markdown 特有 ]]
+--[[ vim.api.nvim_create_autocmd("FileType", { ]]
+--[[   pattern = { "markdown" }, ]]
+--[[   callback = function() ]]
+--[[     local mopts = { noremap = true, silent = true, buffer = 0 } ]]
+--[[     vim.keymap.set("n", "<Leader>x", "/<++><CR>:nohl<CR>4\"-cl", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>C", "i```<CR><++><CR>```<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>c", "i`<++>`<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>b", "i**<++>**<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>s", "i~~<++>~~<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>o", "i[<++>](<++>)<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>O", "i![<++>](<++>)<Esc>", mopts) ]]
+--[[     vim.keymap.set("n", "<Leader>m", "i- [<Space>]<Esc>", mopts) ]]
+--[[   end, ]]
+--[[ }) ]]
