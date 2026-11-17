@@ -89,6 +89,13 @@ return {
             preview = { layout = "vertical", vertical = "down:45%" },
           },
           previewer = "builtin",
+          -- 列表包含符号名/类型，预览需还原为真实文件位置，不能把整行当路径。
+          _fmt = {
+            from = function(entry)
+              local info = entry_map[entry]
+              return info and string.format("%s:%d:1:", info.file, info.lnum) or entry
+            end,
+          },
           actions   = {
             ["default"] = function(sel)
               if not sel or not sel[1] then return end

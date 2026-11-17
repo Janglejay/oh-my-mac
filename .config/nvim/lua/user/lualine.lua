@@ -62,149 +62,103 @@ local spaces = function()
 	return "spaces: " .. vim.api.nvim_buf_get_option(0, "shiftwidth")
 end
 
--- jdtls 三状态常驻指示器
-local _jdtls = {
-  state      = "none",   -- "none" | "indexing" | "ready"
-  percentage = nil,      -- 真实进度百分比（nil = 无数据）
-  title      = "",       -- 当前任务名
-  last_ts    = 0,        -- 最近一次 LspProgress 时间戳（ms）
-}
-
-local function _redraw() pcall(vim.cmd, "redrawstatus") end
-
--- 从 progress value 中提取百分比（兼容字段和消息字符串两种格式）
-local function _extract_pct(val)
-  if val.percentage then return math.floor(tonumber(val.percentage) or 0) end
-  local msg = val.message or ""
-  local n = msg:match("(%d+)%%")
-  return n and tonumber(n) or nil
+-- JDT 服务就绪与构建任务分开统计；没有进度不等于已经完成。
+local jdt_tasks = {}
+local redraw_pending = false
+local function redraw_jdt_status()
+  if redraw_pending then return end
+  redraw_pending = true
+  vim.schedule(function()
+    redraw_pending = false
+    pcall(vim.cmd, "redrawstatus")
+  end)
 end
 
--- jdtls 断开：确认所有客户端消失才标为断开
-vim.api.nvim_create_autocmd("LspDetach", {
-  callback = function(ev)
-    local client = vim.lsp.get_client_by_id(ev.data.client_id)
-    if not client or client.name ~= "jdtls" then return end
-    vim.schedule(function()
-      if #vim.lsp.get_clients({ name = "jdtls" }) == 0 then
-        _jdtls.state = "none"
-        _jdtls.percentage = nil
-        _jdtls.title = ""
-        _redraw()
-      end
-    end)
-  end,
+local jdt_group = vim.api.nvim_create_augroup("UserJdtlsStatusline", { clear = true })
+vim.api.nvim_create_autocmd({ "LspAttach", "LspDetach" }, {
+  group = jdt_group,
+  callback = redraw_jdt_status,
 })
-
--- jdtls 连接 → 只有从断开状态才标为 indexing
-vim.api.nvim_create_autocmd("LspAttach", {
-  callback = function(ev)
-    local client = vim.lsp.get_client_by_id(ev.data.client_id)
-    if not client or client.name ~= "jdtls" then return end
-    if _jdtls.state == "none" then
-      _jdtls.state      = "indexing"
-      _jdtls.title      = "初始化中..."
-      _jdtls.percentage = nil
-      _redraw()
-    end
-  end,
+vim.api.nvim_create_autocmd("User", {
+  group = jdt_group,
+  pattern = "JdtlsStatus",
+  callback = redraw_jdt_status,
 })
-
--- LspProgress：兼容 Neovim 各版本的数据结构，提取真实进度
 vim.api.nvim_create_autocmd("LspProgress", {
+  group = jdt_group,
   callback = function(ev)
-    vim.schedule(function()
-      local client = vim.lsp.get_client_by_id(ev.data.client_id)
-      if not client or client.name ~= "jdtls" then return end
-
-      -- 兼容不同 Neovim 版本的 progress 数据位置
-      local val = vim.tbl_get(ev, "data", "params", "value")
-             or vim.tbl_get(ev, "data", "result")
-             or {}
-
-      _jdtls.last_ts = vim.loop.now()
-
-      local kind = val.kind or ""
-      if kind == "begin" then
-        _jdtls.state      = "indexing"
-        _jdtls.title      = val.title or ""
-        _jdtls.percentage = _extract_pct(val)
-      elseif kind == "report" then
-        if val.title and val.title ~= "" then _jdtls.title = val.title end
-        _jdtls.percentage = _extract_pct(val)
-      elseif kind == "end" then
-        _jdtls.percentage = nil
-        _jdtls.title      = ""
-        -- "end" 不立即变绿，交给 ServiceReady 或 idle 定时器决定
-      end
-      _redraw()
-    end)
+    local data = ev.data or {}
+    local client = vim.lsp.get_client_by_id(data.client_id)
+    if not client or (client.name ~= "jdtls" and client.name ~= "lathe") then return end
+    local params = data.params or {}
+    local value = params.value or {}
+    if params.token == nil or type(value) ~= "table" then return end
+    local tasks = jdt_tasks[client.id] or {}
+    jdt_tasks[client.id] = tasks
+    if value.kind == "end" then
+      tasks[params.token] = nil
+    elseif value.kind == "begin" or value.kind == "report" then
+      local task = tasks[params.token] or {}
+      task.title = value.title or task.title or "项目构建中"
+      task.percentage = value.percentage
+      task.updated_at = vim.uv.now()
+      tasks[params.token] = task
+    end
+    redraw_jdt_status()
   end,
 })
 
--- ServiceReady via window/showMessage → 立即变绿
-local _orig_show_msg = vim.lsp.handlers["window/showMessage"]
-vim.lsp.handlers["window/showMessage"] = function(err, result, ctx, config)
-  if result and (result.message or ""):match("[Ss]ervice[Rr]eady") then
-    local client = vim.lsp.get_client_by_id(ctx.client_id)
-    if client and client.name == "jdtls" then
-      _jdtls.state = "ready"
-      _jdtls.percentage = nil
-      _jdtls.title = ""
-      _redraw()
+local function current_jdt_status()
+  if require("user.java_backend").server == "lathe" then
+    return require("user.lathe_live").status()
+  end
+  -- 回收已经退出客户端的任务，避免反复重开工程后残留状态。
+  for client_id in pairs(jdt_tasks) do
+    local client = vim.lsp.get_client_by_id(client_id)
+    if not client or client:is_stopped() then jdt_tasks[client_id] = nil end
+  end
+  local clients = vim.lsp.get_clients({ name = "jdtls", bufnr = 0 })
+  if #clients == 0 then clients = vim.lsp.get_clients({ name = "jdtls" }) end
+  if #clients == 0 then return "none", "✗ jdtls" end
+
+  local latest_task, all_ready = nil, true
+  local states = _G.nvim_java_status or {}
+  for _, client in ipairs(clients) do
+    local state = states[client.config.root_dir]
+    if state and state.type == "Error" then
+      local message = state.message or "服务错误"
+      if vim.fn.strdisplaywidth(message) > 32 then message = vim.fn.strcharpart(message, 0, 28) .. "…" end
+      return "error", "✗ jdtls " .. message
+    end
+    if not state or state.type ~= "ServiceReady" then all_ready = false end
+    for _, task in pairs(jdt_tasks[client.id] or {}) do
+      if not latest_task or task.updated_at > latest_task.updated_at then latest_task = task end
     end
   end
-  if _orig_show_msg then _orig_show_msg(err, result, ctx, config) end
+  if latest_task then
+    local title = latest_task.title
+    if vim.fn.strdisplaywidth(title) > 32 then title = vim.fn.strcharpart(title, 0, 28) .. "…" end
+    local percentage = tonumber(latest_task.percentage)
+    if percentage then title = title .. " " .. math.max(0, math.min(100, math.floor(percentage))) .. "%" end
+    return "busy", "󰔟 " .. title
+  end
+  if not all_ready then return "preparing", "󰔟 jdtls 项目准备中" end
+  local suffix = #clients > 1 and (" ×" .. #clients) or ""
+  -- ServiceReady 只证明服务已连，首次语义解析仍可能继续准备。
+  return "ready", "✓ jdtls 服务" .. suffix
 end
-
--- 兜底定时器：无 progress 事件超过 4s 且有客户端 → 就绪
-vim.defer_fn(function()
-  local timer = vim.uv.new_timer()
-  if not timer then return end
-  timer:start(2000, 2000, vim.schedule_wrap(function()
-    local clients = vim.lsp.get_clients({ name = "jdtls" })
-    if #clients == 0 then
-      if _jdtls.state ~= "none" then
-        _jdtls.state = "none"
-        _jdtls.percentage = nil
-        _redraw()
-      end
-    elseif _jdtls.state == "indexing" then
-      local idle = vim.loop.now() - _jdtls.last_ts
-      if idle > 4000 then  -- 4 秒没有新 progress 事件，认为索引结束
-        _jdtls.state = "ready"
-        _jdtls.percentage = nil
-        _redraw()
-      end
-    end
-  end))
-end, 2000)
 
 local lsp_progress = {
   function()
-    if _jdtls.state == "none" then
-      return "✗ jdtls"
-    elseif _jdtls.state == "indexing" then
-      -- 有真实百分比时显示进度条，否则只显示文字
-      if _jdtls.percentage then
-        local pct      = math.max(0, math.min(100, _jdtls.percentage))
-        local filled   = math.floor(pct / 10)  -- 10格进度条
-        local bar      = string.rep("█", filled) .. string.rep("░", 10 - filled)
-        return string.format("󰔟 [%s] %d%%", bar, pct)
-      end
-      local msg = _jdtls.title ~= "" and _jdtls.title or "索引中..."
-      if #msg > 40 then msg = msg:sub(1, 37) .. "..." end
-      return "󰔟 " .. msg
-    else
-      return "✓ jdtls"
-    end
+    local _, text = current_jdt_status()
+    -- 状态栏把百分号作为格式符，语言服务的原文必须在输出边界转义。
+    return (text:gsub("%%", "%%%%"))
   end,
-  -- 不加 cond，始终显示
   color = function()
-    if _jdtls.state == "none"     then return { fg = "#f38ba8" }  -- red
-    elseif _jdtls.state == "indexing" then return { fg = "#fab387" }  -- orange
-    else                               return { fg = "#a6e3a1" }  -- green
-    end
+    local state = current_jdt_status()
+    if state == "none" or state == "error" then return { fg = "#f38ba8" } end
+    if state == "ready" then return { fg = "#a6e3a1" } end
+    return { fg = "#fab387" }
   end,
 }
 

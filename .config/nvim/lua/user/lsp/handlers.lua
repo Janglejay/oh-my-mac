@@ -1,5 +1,23 @@
 local M = {}
 
+-- 每个来源 Buffer 只保留一次 gd 请求；切文件/重新查询后丢弃旧结果。
+local goto_requests = {}
+local function cancel_goto(bufnr)
+  local request = goto_requests[bufnr]
+  if not request then return end
+  goto_requests[bufnr] = nil
+  if request.cancel then request.cancel() end
+  if request.timer and not request.timer:is_closing() then
+    request.timer:stop()
+    request.timer:close()
+  end
+end
+
+vim.api.nvim_create_autocmd({ "BufLeave", "BufWipeout" }, {
+  group = vim.api.nvim_create_augroup("UserSmartGotoRequests", { clear = true }),
+  callback = function(ev) cancel_goto(ev.buf) end,
+})
+
 -- ── 诊断配置 ────────────────────────────────────────────────────
 M.setup = function()
   local signs = {
@@ -56,61 +74,101 @@ local function lsp_keymaps(bufnr)
   --   • 在引用处 → 跳到定义
   --   • 在定义处 → 显示所有引用（支持字段/属性/Lombok 生成的 getter/setter）
   vim.keymap.set("n", "gd", function()
-    if #vim.lsp.get_clients({ bufnr = 0 }) == 0 then
+    local bufnr = vim.api.nvim_get_current_buf()
+    local method = "textDocument/definition"
+    if #vim.lsp.get_clients({ bufnr = bufnr, method = method }) == 0 then
       vim.notify("LSP 未连接，请等待 jdtls 就绪", vim.log.levels.WARN)
       return
     end
 
     local fzf = require("fzf-lua")
-
+    cancel_goto(bufnr)
+    local request = {
+      winid = vim.api.nvim_get_current_win(),
+      cursor = vim.api.nvim_win_get_cursor(0),
+      changedtick = vim.api.nvim_buf_get_changedtick(bufnr),
+    }
+    goto_requests[bufnr] = request
     vim.api.nvim_echo({ { "  gd 查询中...", "Comment" } }, false, {})
-    local params  = vim.lsp.util.make_position_params()
-    local def_res = vim.lsp.buf_request_sync(0, "textDocument/definition", params, 30000)
-    vim.api.nvim_echo({ { "" } }, false, {})
+    request.timer = vim.defer_fn(function()
+      if goto_requests[bufnr] ~= request then return end
+      cancel_goto(bufnr)
+      vim.api.nvim_echo({ { "" } }, false, {})
+      vim.notify("gd: 查询超时（30s），可继续操作并稍后重试", vim.log.levels.WARN)
+    end, 30000)
 
-    if def_res == nil then
-      vim.notify("gd: 超时（30s），jdtls 仍在索引，稍后重试", vim.log.levels.WARN)
-      return
-    end
-
-    local defs = {}
-    for _, res in pairs(def_res) do
-      for _, item in ipairs(type(res.result) == "table" and res.result or {}) do
-        table.insert(defs, item)
-      end
-    end
-
-    -- 判断光标是否在定义处（匹配 URI + 行号）
-    local cur_uri  = vim.uri_from_bufnr(0)
-    local cur_line = vim.api.nvim_win_get_cursor(0)[1] - 1
-    local at_def   = (#defs == 0)
-    for _, d in ipairs(defs) do
-      local uri  = d.uri or d.targetUri or ""
-      local line = (d.range and d.range.start.line)
-                or (d.targetRange and d.targetRange.start.line) or -1
-      if uri == cur_uri and line == cur_line then at_def = true; break end
-    end
-
-    if at_def then
-      -- 在定义处 → 直接展示引用列表（让 fzf 自己处理，不做数量预查）
+    request.cancel = vim.lsp.buf_request_all(bufnr, method, function(client)
+      -- 按各客户端的位置编码生成参数，避免中文前缀导致列号偏移。
+      return vim.lsp.util.make_position_params(request.winid, client.offset_encoding)
+    end, function(results)
       vim.schedule(function()
-        fzf.lsp_references({ fzf_opts = { ["--query"] = "!.m2" } })
+        if goto_requests[bufnr] ~= request then return end
+        cancel_goto(bufnr)
+        if not vim.api.nvim_buf_is_valid(bufnr)
+            or vim.api.nvim_get_current_win() ~= request.winid
+            or vim.api.nvim_get_current_buf() ~= bufnr
+            or vim.api.nvim_buf_get_changedtick(bufnr) ~= request.changedtick
+            or not vim.deep_equal(vim.api.nvim_win_get_cursor(0), request.cursor) then
+          return
+        end
+        vim.api.nvim_echo({ { "" } }, false, {})
+
+        local defs, encodings, seen = {}, {}, {}
+        local successful, error_message = false, nil
+        for client_id, response in pairs(results) do
+          local err = response.err or response.error
+          if err then
+            error_message = err.message or "语言服务查询失败"
+          else
+            successful = true
+            local result = response.result
+            local locations = type(result) == "table" and result or {}
+            if locations.uri or locations.targetUri then locations = { locations } end
+            local client = vim.lsp.get_client_by_id(client_id)
+            for _, location in ipairs(locations) do
+              local uri = location.uri or location.targetUri
+              local range = location.targetSelectionRange or location.range or location.targetRange
+              if uri and range then
+                local key = uri .. ":" .. range.start.line .. ":" .. range.start.character
+                if not seen[key] then
+                  seen[key] = true
+                  defs[#defs + 1] = location
+                  encodings[#defs] = client and client.offset_encoding or "utf-16"
+                end
+              end
+            end
+          end
+        end
+        if not successful then
+          vim.notify("gd: " .. (error_message or "语言服务已断开"), vim.log.levels.WARN)
+          return
+        end
+
+        -- 保留原操作：声明所在行查引用，使用处跳定义。
+        local at_def = #defs == 0
+        local cur_uri = vim.uri_from_bufnr(bufnr)
+        for _, location in ipairs(defs) do
+          local range = location.targetSelectionRange or location.range or location.targetRange
+          if (location.uri or location.targetUri) == cur_uri
+              and range.start.line == request.cursor[1] - 1 then
+            at_def = true
+            break
+          end
+        end
+        if at_def then
+          fzf.lsp_references({ fzf_opts = { ["--query"] = "!.m2" } })
+        elseif #defs == 1 then
+          -- 审查窗口内就地跳转，避免复用另一 Tab 的同一文件，确保 Ctrl-O 回到原 Diff 列。
+          local review = package.loaded["user.codediff_review"]
+          local in_review = vim.wo.diff or (review and review.is_open())
+          if vim.lsp.util.show_document(defs[1], encodings[1], { focus = true, reuse_win = not in_review }) then
+            vim.cmd("normal! zz")
+          end
+        else
+          fzf.lsp_definitions()
+        end
       end)
-    elseif #defs == 1 then
-      -- 单一定义 → 直接跳转
-      local d   = defs[1]
-      local uri = d.uri or d.targetUri
-      local ln  = ((d.range and d.range.start.line)
-                or (d.targetRange and d.targetRange.start.line) or 0) + 1
-      local col = (d.range and d.range.start.character)
-               or (d.targetRange and d.targetRange.start.character) or 0
-      vim.cmd("edit " .. vim.fn.fnameescape(vim.uri_to_fname(uri)))
-      vim.api.nvim_win_set_cursor(0, { ln, col })
-      vim.cmd("normal! zz")
-    else
-      -- 多个定义 → fzf 列表选择
-      fzf.lsp_definitions()
-    end
+    end)
   end, vim.tbl_extend("force", o, { desc = "gd: smart goto" }))
 
   -- 其他 LSP 快捷键

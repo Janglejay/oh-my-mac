@@ -19,6 +19,8 @@ return {
           "emmet_ls",
         },
         automatic_installation = true,
+        -- Java provider and optional Spring server are selected explicitly below.
+        automatic_enable = { exclude = { "jdtls", "spring_boot_ls" } },
       })
 
       local mason_bin = vim.fn.stdpath("data") .. "/mason/bin"
@@ -152,7 +154,7 @@ return {
       -- 安装：bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
       -- 功能：Bean 导航、@RequestMapping 补全、application.yml 智能提示
       local sb_jar = vim.fn.expand("~/.local/share/nvim/spring-boot-ls/spring-boot-language-server.jar")
-      if vim.fn.filereadable(sb_jar) == 1 then
+      if require("user.java_backend").server == "jdtls" and vim.fn.filereadable(sb_jar) == 1 then
         local java21 = vim.fn.trim(vim.fn.system("/usr/libexec/java_home -v 21 2>/dev/null"))
         if java21 == "" then java21 = "java" else java21 = java21 .. "/bin/java" end
 

@@ -69,10 +69,9 @@ vim.api.nvim_create_autocmd("VimEnter", {
   end,
 })
 
--- Java 项目 jdtls 启动辅助函数（供 <leader>f 调用）
--- 通过打开一个 Java 文件来触发 jdtls（比直接 lazy.load 更安全）
+-- 保留旧辅助函数名；实际启动由统一 Java 后端配置决定。
 _G.start_jdtls_for_project = function()
-  if #vim.lsp.get_clients({ name = "jdtls" }) > 0 then return true end
+  if #vim.lsp.get_clients({ name = require("user.java_backend").server }) > 0 then return true end
 
   local root = vim.fs.root(0, { "pom.xml", "build.gradle", "mvnw", "gradlew" })
            or vim.fn.getcwd()

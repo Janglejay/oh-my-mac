@@ -152,77 +152,99 @@ keymap("n", "sl", "<C-w>w", opts)                          -- NextWindow（循�
 keymap("n", "sh", "<C-w>W", opts)                          -- PreviousWindow（反向循环）
 keymap("n", "sw", "<cmd>vsplit<CR><cmd>lua vim.lsp.buf.definition()<CR>", opts)  -- EditSourceInNewWindow
 keymap("n", "sq", "<cmd>close<CR>", opts)                  -- Unsplit
--- <Leader>w: 隐藏/恢复所有工具窗口（对应 IDEA Shift+F12 Hide All Windows）
--- 隐藏：关闭 nvim-tree、terminal、aerial、call hierarchy 等工具窗口
--- 恢复：把之前开着的工具窗口重新打开
-local _tools_hidden = false
-local _tools_state  = {
-  nvim_tree      = false,
-  terminal       = false,
-  aerial         = false,
-  call_hierarchy = false,
-}
+-- <Leader>w: 最大化当前拆分窗口，再按恢复原布局；不关闭窗口或切换 Buffer。
+local zoom_states = {}
 
-local function is_tool_win(win)
-  local buf   = vim.api.nvim_win_get_buf(win)
-  local bname = vim.api.nvim_buf_get_name(buf)
-  local bt    = vim.bo[buf].buftype
-  return bt == "terminal"
-      or bname:find("NvimTree")       ~= nil
-      or bname:find("aerial://")      ~= nil
-      or bname:find("CallHierarchy")  ~= nil
-      or bname == "[dap-repl]"
-      or bname:find("DAP") ~= nil
+-- 临时解除尺寸限制，操作结束立即还原，避免影响其他 Tab 或后续拆分。
+local function resize_for_zoom(wins, action)
+  local min_width, min_height = vim.o.winminwidth, vim.o.winminheight
+  local fixed = {}
+  for _, win in ipairs(wins) do
+    fixed[win] = { width = vim.wo[win].winfixwidth, height = vim.wo[win].winfixheight }
+    vim.wo[win].winfixwidth, vim.wo[win].winfixheight = false, false
+  end
+  local ok, err = pcall(function()
+    vim.o.winminwidth, vim.o.winminheight = 0, 0
+    action()
+  end)
+  vim.o.winminwidth, vim.o.winminheight = min_width, min_height
+  for win, flags in pairs(fixed) do
+    if vim.api.nvim_win_is_valid(win) then
+      vim.wo[win].winfixwidth, vim.wo[win].winfixheight = flags.width, flags.height
+    end
+  end
+  return ok, err
 end
 
-vim.keymap.set("n", "<Leader>w", function()
-  local ch = require("user.call_hierarchy")
-
-  if _tools_hidden then
-    -- 恢复所有工具窗口
-    if _tools_state.nvim_tree      then vim.cmd("NvimTreeOpen") end
-    if _tools_state.aerial         then vim.cmd("AerialOpen") end
-    if _tools_state.terminal       then vim.cmd("ToggleTerm direction=horizontal") end
-    if _tools_state.call_hierarchy then ch.reopen() end
-    _tools_hidden = false
-    vim.notify("工具窗口已恢复", vim.log.levels.INFO)
-  else
-    -- 扫描当前哪些工具窗口是开的
-    _tools_state.nvim_tree      = false
-    _tools_state.terminal       = false
-    _tools_state.aerial         = false
-    _tools_state.call_hierarchy = ch.is_open()
-
-    local tool_wins = {}
-    for _, win in ipairs(vim.api.nvim_list_wins()) do
-      if vim.api.nvim_win_get_config(win).relative ~= "" then goto continue end
-      if is_tool_win(win) then
-        local buf   = vim.api.nvim_win_get_buf(win)
-        local bname = vim.api.nvim_buf_get_name(buf)
-        local bt    = vim.bo[buf].buftype
-        if bname:find("NvimTree")  then _tools_state.nvim_tree = true end
-        if bt == "terminal"        then _tools_state.terminal  = true end
-        if bname:find("aerial://") then _tools_state.aerial    = true end
-        table.insert(tool_wins, win)
+local function toggle_window_zoom()
+  local tab, current = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_win()
+  -- 弹出的搜索/预览窗口不属于拆分布局。
+  if vim.api.nvim_win_get_config(current).relative ~= "" then return end
+  local wins = vim.tbl_filter(function(win)
+    return vim.api.nvim_win_get_config(win).relative == ""
+  end, vim.api.nvim_tabpage_list_wins(tab))
+  local active_view = vim.fn.winsaveview()
+  local state = zoom_states[tab]
+  if state then
+    zoom_states[tab] = nil
+    local unchanged = vim.deep_equal(state.layout, vim.fn.winlayout())
+      and state.columns == vim.o.columns and state.lines == vim.o.lines
+    local ok, err = resize_for_zoom(wins, function()
+      if unchanged then
+        vim.api.nvim_set_current_win(state.win)
+        vim.cmd(state.restore)
+        for win, saved in pairs(state.views) do
+          if win ~= current and vim.api.nvim_win_get_buf(win) == saved.buf then
+            vim.api.nvim_win_call(win, function() vim.fn.winrestview(saved.view) end)
+          end
+        end
+      else
+        -- 用户已增删窗口或改变终端尺寸：只展开现有布局，不执行旧窗口编号。
+        vim.cmd("wincmd =")
       end
-      ::continue::
+    end)
+    -- 保留最大化期间的滚动/gd 结果，不退回旧文件或旧光标位置。
+    if vim.api.nvim_win_is_valid(current) then
+      vim.api.nvim_set_current_win(current)
+      vim.fn.winrestview(active_view)
     end
-
-    if #tool_wins == 0 and not _tools_state.call_hierarchy then
-      vim.notify("没有工具窗口可隐藏", vim.log.levels.INFO)
-      return
-    end
-
-    -- 关闭 call hierarchy（包含 preview 窗口）
-    if _tools_state.call_hierarchy then ch.close_all() end
-    -- 关闭其他工具窗口
-    for _, win in ipairs(tool_wins) do
-      pcall(vim.api.nvim_win_close, win, false)
-    end
-    _tools_hidden = true
-    vim.notify("工具窗口已隐藏（再按 <Leader>w 恢复）", vim.log.levels.INFO)
+    if not ok then vim.notify("窗口恢复失败：" .. tostring(err), vim.log.levels.ERROR) end
+    return
   end
-end, { noremap = true, silent = true, desc = "Hide/Restore all tool windows (IDEA Shift+F12)" })
+  if #wins < 2 then return end
+  state = {
+    win = current, layout = vim.fn.winlayout(), restore = vim.fn.winrestcmd(), views = {},
+    columns = vim.o.columns, lines = vim.o.lines,
+  }
+  for _, win in ipairs(wins) do
+    state.views[win] = {
+      buf = vim.api.nvim_win_get_buf(win),
+      view = vim.api.nvim_win_call(win, vim.fn.winsaveview),
+    }
+  end
+  local ok, err = resize_for_zoom(wins, function()
+    vim.cmd("wincmd _")
+    vim.cmd("wincmd |")
+  end)
+  if ok then
+    zoom_states[tab] = state
+  else
+    resize_for_zoom(wins, function() vim.cmd(state.restore) end)
+    vim.notify("窗口最大化失败：" .. tostring(err), vim.log.levels.ERROR)
+  end
+  vim.fn.winrestview(active_view)
+end
+
+vim.api.nvim_create_autocmd("TabClosed", {
+  group = vim.api.nvim_create_augroup("UserWindowZoom", { clear = true }),
+  callback = function()
+    for tab in pairs(zoom_states) do
+      if not vim.api.nvim_tabpage_is_valid(tab) then zoom_states[tab] = nil end
+    end
+  end,
+})
+vim.keymap.set("n", "<Leader>w", toggle_window_zoom,
+  { noremap = true, silent = true, desc = "最大化当前窗口/恢复原布局" })
 keymap("n", "<Leader>c", "<cmd>Bdelete<CR>", opts)         -- CloseContent
 keymap("n", "<Leader>C", "<cmd>%bd|e#|bd#<CR>", opts)     -- CloseAllEditorsButActive
 keymap("n", "gw", "<cmd>NvimTreeToggle<CR>", opts)         -- OpenProjectWindows

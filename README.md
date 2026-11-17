@@ -97,6 +97,10 @@ Terminal session management:
 #### Neovim (Primary Editor)
 **Architecture**: Modular Lua configuration
 
+Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分析模型，直接读取原工程最新源码，每工程缓存和构建副本独立；原 POM 和 Lombok 版本保持不变。编辑 `.config/nvim/lua/user/java_backend.lua` 中的 `server`，可一行切回 JDT LS，重启后生效。
+
+安装前置、缓存位置、失败重试与已验证范围见 [Neovim 配置说明](.config/nvim/README.md#java-开发专题)。配置提交不包含本机 Lathe 安装资源或 Maven 制品缓存。
+
 ```lua
 -- Entry Point Chain:
 ~/.config/nvim/init.vim      →  Sets runtimepath to ~/.vim
@@ -108,11 +112,12 @@ Terminal session management:
 | Category | Modules | Purpose |
 |----------|---------|---------|
 | **Core** | `options.lua`, `keymaps.lua`, `colorscheme.lua` | Editor fundamentals |
-| **Plugin Management** | `plugins.lua` | Packer plugin declarations |
+| **Plugin Management** | `plugins/init.lua` | lazy.nvim plugin declarations |
+| **Java** | `java_backend.lua`, `lathe_live.lua`, `plugins/java_*.lua` | Lathe / JDT LS selection and isolated Maven models |
 | **LSP** | `lsp/handlers.lua`, `lsp/lsp-installer.lua`, `lsp/settings/*` | Language servers |
 | **Completion** | `cmp.lua` | nvim-cmp with multiple sources |
 | **UI** | `lualine.lua`, `bufferline.lua`, `alpha.lua`, `whichkey.lua` | Visual interface |
-| **Navigation** | `telescope.lua`, `nvim-tree.lua`, `project.lua` | File/project navigation |
+| **Navigation** | `plugins/search.lua`, `nvim-tree.lua`, `project.lua` | fzf-lua source previews and file/project navigation |
 | **Terminal** | `toggleterm.lua` | Integrated terminal |
 | **Git** | `gitsigns.lua` | Inline git status/diff |
 | **Editing** | `autopairs.lua`, `comment.lua`, `todo-comments.lua` | Text enhancement |
@@ -122,10 +127,10 @@ Terminal session management:
 
 | Mode | Key | Action |
 |------|-----|--------|
-| Normal | `<leader>e` | Toggle nvim-tree (left sidebar) |
+| Normal | `<leader>e` | Recent files in the current project |
 | Normal | `<leader>p` | Find current file in tree |
-| Normal | `<leader>f` | Telescope find files |
-| Normal | `<leader>F` | Telescope live grep |
+| Normal | `<leader>f` | Java classes/methods with source preview (fzf-lua) |
+| Normal | `<leader>F` | Project content search (fzf-lua) |
 | Normal | `<leader>b` | Buffer list |
 | Normal | `<leader>g` | Git operations (which-key submenu) |
 | Normal | `<leader>l` | LSP operations (which-key submenu) |
@@ -138,6 +143,8 @@ Terminal session management:
 - Diagnostics: Virtual text disabled, signs enabled
 - Formatting: Conform.nvim (replaces null-ls)
 - Completion: nvim-cmp with LSP, buffer, path, luasnip sources
+
+Git 审查主入口使用 CodeDiff 4.0.8：目录树、单文件完整 Diff、比较基准选择，以及带来源反馈、撤销边界和显式 Apply Changes 的三方合并。Diffview 保留为历史与回退工具。详见 [Git 审查与合并指南](.config/nvim/docs/git-review-guide.md)。
 
 #### Traditional Vim (Legacy Support)
 Maintained for environments without Neovim:

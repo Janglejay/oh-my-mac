@@ -1,7 +1,7 @@
 # Neovim Java 开发配置指南
 
-> 本文档描述当前 Neovim 配置中所有与 Java 开发相关的插件、快捷键和维护方法。
-> 目标：完全替代 IntelliJ IDEA，支持美团内部大型多模块 Maven 项目。
+> 当前默认后端已切为 Lathe 0.3.1，打开 Maven 工程自动准备 Java 8 模型。后端选择、安装资源、独立缓存、重试和验证范围统一见 [配置说明的 Java 开发专题](../README.md#java-开发专题)。
+> 本页保留 JDT LS 开发工具链的详细参考；调试、测试及 Spring 专属功能不能直接视为 Lathe 下已通过验证。
 
 ---
 
@@ -24,8 +24,9 @@
 
 | 依赖 | 版本要求 | 安装方式 |
 |------|----------|----------|
-| Neovim | 0.10+ | `brew install neovim` |
-| Java | 21（jdtls 运行环境） | `brew install --cask zulu@21` |
+| Neovim | 0.11+（本机验证 0.12.3） | `brew install neovim` |
+| Java | 21（LSP 运行环境）及 8（Lathe 独立构建） | 保留项目 Java 8，另装 JDK 21 |
+| Maven / Python | 本机 Maven 3.9.11、Python 3.10+ | Lathe 资源和路径见主说明 |
 | ripgrep | 任意 | `brew install ripgrep` |
 | fd | 任意 | `brew install fd` |
 | fzf | 任意 | `brew install fzf` |
@@ -77,7 +78,9 @@ lua/
     ├── autocommands.lua        # 自动命令
     ├── plugins/
     │   ├── init.lua            # 插件汇总入口
-    │   ├── java.lua            # ★ jdtls Java LSP 核心配置
+    │   ├── java.lua            # Java 后端分发入口
+    │   ├── java_jdtls.lua      # JDT LS 核心配置
+    │   ├── java_lathe.lua      # Lathe 接入；后端由 java_backend.lua 选择
     │   ├── lsp.lua             # LSP 服务器（Mason）+ conform + cmp
     │   ├── search.lua          # fzf-lua + aerial + lspsaga + 书签
     │   ├── spring.lua          # Spring HTTP 接口搜索
@@ -197,12 +200,12 @@ java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -jar app
 | `gm` | 跳到下一个书签 | `F4`（Bookmarks） |
 | `gM` | 跳到上一个书签 | `Shift+F4` |
 
-### jdtls 索引管理
+### Java 模型与索引管理
 
 | 快捷键 | 功能 | 说明 |
 |--------|------|------|
-| `<Leader>jr` | 软刷新（同步 pom.xml 变更） | 不删 workspace，快 |
-| `<Leader>jR` | 全量重建（删 workspace 重启） | 约 1-3 分钟，解决索引损坏 |
+| `<Leader>jr` | 刷新当前所选后端的项目模型 | Lathe 首次失败时先打开 Java 文件再重试 |
+| `<Leader>jR` | 重建当前所选后端的模型 | Lathe 只清理独立构建输出；JDT LS 重建专用 workspace |
 
 ### 窗口管理
 
@@ -228,8 +231,11 @@ java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -jar app
 
 | 需求 | 文件 |
 |------|------|
-| jdtls JVM 参数（内存、Lombok）| `lua/user/plugins/java.lua` |
-| jdtls 项目设置（completion、importOrder）| `lua/user/plugins/java.lua` → `settings.java` |
+| Java 后端选择、Lathe 安装和 JVM 参数 | `lua/user/java_backend.lua` |
+| Lathe 多工程生命周期 | `lua/user/lathe_live.lua` |
+| Lathe Maven 模型准备 | `scripts/lathe-model.py` |
+| jdtls JVM 参数（内存、Lombok）| `lua/user/plugins/java_jdtls.lua` |
+| jdtls 项目设置（completion、importOrder）| `lua/user/plugins/java_jdtls.lua` → `settings.java` |
 | 添加新 LSP 服务器 | `lua/user/plugins/lsp.lua` |
 | 修改格式化器 | `lua/user/lsp/conform.lua` |
 | 修改搜索快捷键 | `lua/user/plugins/search.lua` |
@@ -252,10 +258,10 @@ java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -jar app
 - **Lombok**：Mason 安装 jdtls 时自带 `lombok.jar`，自动通过 `-javaagent` 注入
 - **内存**：`-Xmx6g`（大型多模块项目需要，info-search 等 OOM 级项目需要 4GB+）
 - **多模块 Maven**：`find_root()` 向上遍历找最顶层 `pom.xml`，避免停在子模块
-- **workspace**：存储在 `~/.local/share/nvim/jdtls-workspace/<项目名>/`
+- **workspace**：macOS 使用 `~/Library/Caches/jdtls/nvim-<工程路径哈希>/`；按工程真实路径隔离，并可复用身份匹配的历史缓存
 
 **状态栏指示器**（lualine）：
-- `✓ jdtls`（绿色）= 索引完成，所有功能可用
+- `✓ jdtls 服务`（绿色）= 服务报告就绪，首次语义解析仍可能继续；不等于所有功能都已完成准备
 - `󰔟 jdtls`（橙色）= 正在索引中，部分功能降级
 - `✗ jdtls`（红色）= 未连接
 
@@ -326,11 +332,11 @@ orderService.create(userId: id, quantity: 3)
 
 ```bash
 # 从项目根目录（含 pom.xml）启动 nvim
-cd /path/to/insurance_mall
+cd /path/to/maven-project
 nvim src/main/java/com/example/SomeClass.java
 
-# jdtls 自动启动并开始索引（状态栏显示 󰔟 jdtls）
-# 等待变为 ✓ jdtls 后，gd/gr/gi 等功能全部可用（约 1-3 分钟）
+# 默认 Lathe 自动识别 Maven 并准备模型；打开 Java 文件后附着 LSP
+# 已有模型会复用，首次准备耗时依项目规模与本地依赖而定
 ```
 
 ### 重建损坏的索引
@@ -377,11 +383,11 @@ nvim src/main/java/com/example/SomeClass.java
 
 - 大型项目（info-search 等）首次索引可能需要 5-10 分钟
 - 若超过 15 分钟仍未就绪，执行全量重建：`<Leader>jR`
-- OOM 问题：当前 `-Xmx6g`，如果仍 OOM 可改 `java.lua` 的 `--jvm-arg=-Xmx8g`
+- OOM 问题：当前 `-Xmx6g`，如果仍 OOM 可改 `java_jdtls.lua` 的 `--jvm-arg=-Xmx8g`
 
 ### `gd` 跳转没反应
 
-- jdtls 状态必须是 `✓`（索引完成）
+- 先确认当前选择的后端和 `:LspInfo`；Lathe 检查 `:LatheLog`，JDT LS 检查服务和构建状态
 - 若状态是 `󰔟`，等待索引完成
 - 若 LSP 未就绪，`gd` 会弹出 "LSP 未连接" 提示
 
@@ -427,7 +433,7 @@ nvim src/main/java/com/example/SomeClass.java
 
 ### 修改 jdtls 内存限制
 
-编辑 `lua/user/plugins/java.lua`：
+编辑 `lua/user/plugins/java_jdtls.lua`；Lathe JVM 参数单独位于 `lua/user/java_backend.lua`：
 ```lua
 table.insert(cmd, "--jvm-arg=-Xmx6g")  -- 改这里，单位 g
 ```
@@ -472,7 +478,6 @@ client.server_capabilities.documentFormattingProvider = false
 │   ├── bin/jdtls               # jdtls 启动脚本
 │   └── packages/jdtls/
 │       └── lombok.jar          # Lombok 注解处理器
-├── jdtls-workspace/            # jdtls 索引缓存（按项目名分目录）
 └── spring-boot-ls/             # Spring Boot Language Server（可选）
     └── spring-boot-language-server.jar
 ```

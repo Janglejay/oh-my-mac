@@ -1,3 +1,9 @@
+local java_backend = require("user.java_backend")
+java_backend.setup()
+
+-- Compatibility with the installed Saga API used by the call-hierarchy extension.
+package.preload["lspsaga.config"] = function() return require("lspsaga").config end
+
 -- 添加 lazy.nvim 到 rtp
 vim.opt.rtp:prepend(vim.fn.stdpath("data") .. "/lazy/lazy.nvim")
 
@@ -33,3 +39,5 @@ lazy.setup(require("user.plugins"), {
 if vim.loader then
   vim.loader.reset()
 end
+
+if java_backend.server == "lathe" then require("user.lathe_live").setup() end
