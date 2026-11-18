@@ -127,18 +127,22 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 |--------|------|------|
 | `gd` | 智能跳转 | 定义处显示引用，使用处跳转定义。能确认依赖版本及符号的类和实例方法可回退到只读字节码 |
 | `gD` | 跳到声明 | - |
-| `gr` | 查找引用 | Java 保留 Lathe 返回的项目、生成源码和依赖结果 |
+| `gr` | 查找引用 | 保留语言服务返回的测试引用，并排到其他结果之后。由 `gd` 打开的引用列表也使用此顺序 |
 | `gi` | 跳到实现 | Java Mapper 调用可直接跳到 XML 语句，其余调用查询实现 |
 | `gu` | 跳到父类/接口 | Java 专属 |
 | `gR` | 调用链 | 来调者树 (lspsaga GUI) |
 
 MyBatis 根据完整 `namespace` 和语句 `id` 匹配。Java Mapper 方法声明与 XML 中的 `select`、`insert`、`update`、`delete` 可用 `gd` 互跳，`Ctrl+o` 回到原位置。可直接打开 Lathe 缓存的依赖源码，在字段名上用 `gr` 或 `gd` 搜索模型中能验证归属的字段引用和 getter/setter 调用。
 
+Mapper XML 中，`gd` 可跳到 `resultMap`、`extends` 和 `include refid` 对应定义。对能解析出 Java 类型的映射属性、`@Param` 参数、`foreach` 元素和 OGNL 属性也可跳到 Java 声明。复用片段根据调用它的语句解析参数类型。光标处的 `gr` 可反查对应 XML，Java 属性声明上的 `gr` 同时查询语言服务。依赖动态键或无法确认类型的表达式会提示无法静态定位。
+
+Spring Tools 使用自己的 classpath 回调协议。隔离验证将 Maven 实际生成的 Lathe 源码根、编译 classpath 和 JDK 系统库转换后传入 Spring Tools，成功识别了样例的 Bean 符号。日常 Spring HTTP 搜索仍用 `,ha`，配置中未启用实验用的转换层。
+
 #### 1.2 搜索体系
 
 | 快捷键 | 用途 | 实现方式 |
 |--------|------|----------|
-| `<Leader>f` | 搜类/接口/方法名 | ripgrep 即时扫描 |
+| `<Leader>f` | 搜项目符号或文件 | 输入框默认带 `scope:!test`，删除它可在本次搜索中包含测试路径 |
 | `<Leader>F` | 全文内容搜索 | live grep |
 | `<Leader>ha` | Spring HTTP 接口 | 扫描 `@Mapping` 注解 |
 | `<Leader>e` | 最近文件 | - |

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "json-editor",
+  "description": "Format, minify, escape and filter JSON, and convert it to TypeScript, Go types or YAML.",
+  "author": {
+    "name": "HerbertLu"
+  },
+  "license": "MIT"
+}

@@ -87,7 +87,7 @@ local function find_call_usages(anchors, title)
       end
       if pending ~= 0 then return end
       if incomplete then title = title .. " · Partial LSP results" end
-      if #items > 0 then require("user.navigation").items(title, items)
+      if #items > 0 then require("user.navigation").usage_items(title, items)
       else vim.notify("Lathe: 当前索引未能返回引用", vim.log.levels.WARN) end
     end)
   end

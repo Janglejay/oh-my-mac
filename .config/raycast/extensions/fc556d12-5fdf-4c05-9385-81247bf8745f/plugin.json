@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "date-format-converter",
+  "description": "Convert Unix timestamps and date strings into ISO, UTC, localized and other date formats, or insert a date from natural language.",
+  "author": {
+    "name": "yangxy"
+  },
+  "license": "MIT"
+}

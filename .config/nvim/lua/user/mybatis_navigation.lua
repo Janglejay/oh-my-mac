@@ -166,6 +166,33 @@ local function project(buf)
   return vim.fs.root(buf, ".git") or vim.fs.root(buf, { "pom.xml", "settings.gradle", "settings.gradle.kts" })
 end
 
+local syntax = {
+  parse = parse, text = text, first = first, tag = tag, attribute = attribute,
+  mapper = mapper, contents = contents, target = target, origin = origin,
+}
+
+function M.java_references(fallback)
+  local buf = vim.api.nvim_get_current_buf()
+  if vim.bo[buf].filetype ~= "java" or vim.bo[buf].buftype ~= "" then return false end
+  local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
+  if not ok or not node or node:type() ~= "identifier" then return false end
+  local parent = node:parent()
+  local grandparent = parent and parent:parent()
+  local kind = parent and parent:type()
+  local name = parent and parent:field("name")[1]
+  local symbol = text(node, buf)
+  local bean = kind == "method_declaration"
+    and (symbol:match("^get%u") or symbol:match("^is%u") or symbol:match("^set%u"))
+  local field = kind == "variable_declarator" and grandparent and grandparent:type() == "field_declaration"
+  local param = (kind == "formal_parameter" or kind == "spread_parameter")
+    and grandparent and grandparent:parent() and grandparent:parent():type() == "method_declaration"
+  if not name or not name:equal(node) or not (bean or field or param) then return false end
+  local root = project(buf)
+  if not root then return false end
+  require("user.mybatis_semantics").run(buf, root, false, syntax, fallback)
+  return true
+end
+
 function M.jump_from_java(fallback)
   local buf = vim.api.nvim_get_current_buf()
   local tree = vim.bo[buf].filetype == "java" and parse(buf, "java")
@@ -219,7 +246,7 @@ function M.setup()
     callback = function(ev)
       local b = ev.buf
       if not mapper(parse(b, "xml"), b) then return end
-      vim.keymap.set("n", "gd", function()
+      local function mapper_jump()
         local tree = parse(b, "xml")
         local namespace, element = mapper(tree, b)
         local root = namespace and project(b)
@@ -228,6 +255,22 @@ function M.setup()
         local node = tree:named_descendant_for_range(row - 1, col, row - 1, col)
         local method
         while node and not node:equal(element) do
+          if node:type() == "Attribute" then
+            local name = first(node, "Name")
+            local key = name and text(name, b)
+            if vim.tbl_contains({ "resultMap", "extends", "refid", "test", "collection", "property", "value" }, key) then
+              vim.notify("MyBatis: 未找到可静态确认的定义", vim.log.levels.INFO)
+              return
+            end
+          elseif node:type() == "CharData" or node:type() == "CData" then
+            local line = vim.api.nvim_get_current_line()
+            for from, value, finish in line:gmatch("()[#$]%{([^}]+)%}()") do
+              if col >= from - 1 and col < finish - 1 and value ~= "" then
+                vim.notify("MyBatis: 未找到可静态确认的定义", vim.log.levels.INFO)
+                return
+              end
+            end
+          end
           local kind, start = tag(node, b)
           if statements[kind] then method = attribute(start, "id", b); break end
           node = node:parent()
@@ -235,7 +278,16 @@ function M.setup()
         search(root, namespace, method, false, origin(b), function()
           vim.notify("MyBatis: 未找到对应的 Java Mapper 声明", vim.log.levels.WARN)
         end)
-      end, { buffer = b, desc = "Go to MyBatis Java Mapper" })
+      end
+      local function run(definition)
+        local root = project(b)
+        if not root then return end
+        require("user.mybatis_semantics").run(b, root, definition, syntax, definition and mapper_jump or function()
+          vim.notify("MyBatis: 光标处没有可静态确认的引用", vim.log.levels.INFO)
+        end)
+      end
+      vim.keymap.set("n", "gd", function() run(true) end, { buffer = b, desc = "Go to MyBatis definition" })
+      vim.keymap.set("n", "gr", function() run(false) end, { buffer = b, desc = "Find MyBatis usages" })
     end,
   })
 end

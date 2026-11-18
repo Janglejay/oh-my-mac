@@ -135,7 +135,7 @@ local function find_usages(buf, client, ctx, class, field, group, artifact, vers
     end
     if #items > 0 then
       local title = "Find Usages — " .. class:match("[^%.]+$") .. "." .. field
-      require("user.navigation").items(partial and title .. " · 部分结果" or title, items)
+      require("user.navigation").usage_items(partial and title .. " · 部分结果" or title, items)
     else
       vim.notify("Lathe: " .. (message or (resolved == 0 and "未能确认此依赖字段或访问器"
         or "当前索引未返回该字段及访问器的项目引用")), vim.log.levels.WARN)

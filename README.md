@@ -30,8 +30,6 @@ This dotfiles repository manages configurations across multiple software dimensi
 ├── .zshrc                                 # Shell configuration (manual sync)
 ├── .tmux.conf                             # Terminal multiplexer
 ├── .ideavimrc                             # JetBrains IDE Vim emulation
-├── plugged/                               # Vim plugins (vim-plug)
-├── autoload/                              # Vim autoload scripts
 ├── lua/                                   # Neovim Lua modules
 ├── one-step-install.sh                    # **推荐: 一键安装脚本**
 ├── deploy.sh                              # 仅部署配置（符号链接）
@@ -92,36 +90,40 @@ Terminal session management:
 - **Windows**: Numbered from 1 (not 0)
 - **Resizing**: `Ctrl+t` + `H/J/K/L`
 
+完整编辑器盘点见 [Neovim 全量配置清单](.config/nvim/docs/config-inventory.md)。
+
 ### 2. Editor Stack
 
 #### Neovim (Primary Editor)
+
+可选图形界面：[Neovide 启动、外观与验收说明](.config/nvim/docs/neovide.md)，沿用现有 Neovim 和快捷键。
 **Architecture**: Modular Lua configuration
 
-Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分析模型，直接读取原工程最新源码，每工程缓存和构建副本独立；原 POM 和 Lombok 版本保持不变。编辑 `.config/nvim/lua/user/java_backend.lua` 中的 `server`，可一行切回 JDT LS，重启后生效。
+Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分析模型，直接读取原工程最新源码，每工程缓存和构建副本独立；原 POM 和 Lombok 版本保持不变。Java 只使用 Lathe，已移除 JDT LS、后端切换及预热脚本。
 
 安装前置、缓存位置、失败重试与已验证范围见 [Neovim 配置说明](.config/nvim/README.md#java-开发专题)。配置提交不包含本机 Lathe 安装资源或 Maven 制品缓存。
 
 ```lua
 -- Entry Point Chain:
-~/.config/nvim/init.vim      →  Sets runtimepath to ~/.vim
-~/.config/nvim/lua/init.lua  →  Loads 23 user modules
+~/.config/nvim/init.vim      →  Loads lua/init.lua
+~/.config/nvim/lua/init.lua  →  Loads the modular lazy.nvim configuration
 ```
 
 **Module Organization** (`lua/user/`):
 
 | Category | Modules | Purpose |
 |----------|---------|---------|
-| **Core** | `options.lua`, `keymaps.lua`, `colorscheme.lua` | Editor fundamentals |
+| **Core** | `options.lua`, `keymaps.lua`, `autocommands.lua` | Editor fundamentals |
 | **Plugin Management** | `plugins/init.lua` | lazy.nvim plugin declarations |
-| **Java** | `java_backend.lua`, `lathe_live.lua`, `plugins/java_*.lua` | Lathe / JDT LS selection and isolated Maven models |
-| **LSP** | `lsp/handlers.lua`, `lsp/lsp-installer.lua`, `lsp/settings/*` | Language servers |
+| **Java** | `lathe_config.lua`, `lathe_live.lua`, `plugins/java.lua` | Lathe integration and isolated Maven models |
+| **LSP** | `plugins/lsp.lua`, `lsp/handlers.lua` | Language servers |
 | **Completion** | `cmp.lua` | nvim-cmp with multiple sources |
-| **UI** | `lualine.lua`, `bufferline.lua`, `alpha.lua`, `whichkey.lua` | Visual interface |
-| **Navigation** | `plugins/search.lua`, `nvim-tree.lua`, `project.lua` | fzf-lua source previews and file/project navigation |
-| **Terminal** | `toggleterm.lua` | Integrated terminal |
+| **UI** | `lualine.lua`, `bufferline.lua`, `whichkey.lua` | Visual interface |
+| **Navigation** | `navigation.lua`, `snacks.lua`, `project.lua` | Snacks pickers, source previews, and project navigation |
+| **Terminal** | `snacks.lua` | Integrated terminal |
 | **Git** | `gitsigns.lua` | Inline git status/diff |
-| **Editing** | `autopairs.lua`, `comment.lua`, `todo-comments.lua` | Text enhancement |
-| **Performance** | `impatient.lua`, `transparency.lua` | Optimization |
+| **Editing** | `plugins/editing.lua` | Editing plugins and text motions |
+| **Appearance** | `colorschemes/catppuccin.lua`, `transparency.lua` | Theme and transparency |
 
 **Key Bindings** (Leader = `,`):
 
@@ -129,29 +131,25 @@ Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分
 |------|-----|--------|
 | Normal | `<leader>e` | Recent files in the current project |
 | Normal | `<leader>p` | Find current file in tree |
-| Normal | `<leader>f` | Java classes/methods with source preview (fzf-lua) |
-| Normal | `<leader>F` | Project content search (fzf-lua) |
+| Normal | `<leader>f` | Project symbols or files with source preview. Remove `scope:!test` to include test paths |
+| Normal | `<leader>F` | Project content search |
 | Normal | `<leader>b` | Buffer list |
 | Normal | `<leader>g` | Git operations (which-key submenu) |
 | Normal | `<leader>l` | LSP operations (which-key submenu) |
-| Normal | `gd` | Go to definition |
-| Normal | `gr` | Find references |
+| Normal | `gd` | Go to definition, including supported MyBatis XML links |
+| Normal | `gr` | Find references with test paths listed last |
 | Normal | `<C-\>` | Toggle terminal |
 
 **LSP Configuration**:
-- Servers: jsonls, lua_ls, rust_analyzer, pyright
+- Configured servers: Lathe, pyright, ts_ls, vue_ls, eslint, cssls, html, emmet_ls. Installed packages and availability are listed in the inventory. Rust/JSON/Lua parser support does not imply an enabled language server.
 - Diagnostics: Virtual text disabled, signs enabled
+- Installation: independent language-tool directories; native vim.lsp.config/enable; no Mason
 - Formatting: Conform.nvim (replaces null-ls)
 - Completion: nvim-cmp with LSP, buffer, path, luasnip sources
 
-Git 审查主入口使用 CodeDiff 4.0.8：目录树、单文件完整 Diff、比较基准选择，以及带来源反馈、撤销边界和显式 Apply Changes 的三方合并。Diffview 保留为历史与回退工具。详见 [Git 审查与合并指南](.config/nvim/docs/git-review-guide.md)。
+Git 审查主入口使用 CodeDiff 4.0.8：目录树、单文件完整 Diff、比较基准选择，以及带来源反馈、撤销边界和显式 Apply Changes 的三方合并。历史查看同样由 CodeDiff 提供，Gitsigns 保留源码行级操作。详见 [Git 审查与合并指南](.config/nvim/docs/git-review-guide.md)。
 
-#### Traditional Vim (Legacy Support)
-Maintained for environments without Neovim:
-- **Plugin Manager**: vim-plug
-- **Plugins**: NERDTree, vim-surround, vim-table-mode, vim-devicons
-- **Configuration**: `.vimrc` with vimscript
-- **Note**: Neovim reuses `.vim` runtime but loads Lua modules on top
+Traditional Vim backups, vim-plug and copied plugin trees were removed. Neovim has its own runtime and lazy.nvim plugin set.
 
 #### JetBrains IDEs (`.ideavimrc`)
 Extensive Vim emulation for IntelliJ IDEA, PyCharm, Fleet:
@@ -161,28 +159,11 @@ Extensive Vim emulation for IntelliJ IDEA, PyCharm, Fleet:
 
 ### 3. File Management
 
-#### Yazi Integration (`lua/user/yazi.lua`)
-Terminal file manager with Vim-style navigation:
-```lua
--- Configurable via globals:
-vim.g.yazi_direction = "vertical"  -- "vertical" | "horizontal" | "float"
-vim.g.yazi_win_size = 35           -- Width/height
-vim.g.yazi_win_pos = "left"        -- "left" | "right"
-vim.g.yazi_chdir = true            -- Update nvim cwd on quit
-```
+Yazi remains a standalone shell tool; the unused Neovim integration was removed.
 
-**Key Features**:
-- Image previews
-- Multi-select with batch operations
-- Fuzzy search
-- NERDTree compatibility commands (`:NERDTreeToggle`, `:NERDTreeFind`)
+#### Snacks Explorer
 
-#### Nvim-tree
-Native Neovim file explorer (currently active):
-- Sidebar on left, 35 columns wide
-- Git status indicators
-- File type icons
-- Mouse support for resizing
+Open the project tree and reveal the current file with `<leader>p`. The tree shows file icons and Git status.
 
 ### 4. macOS System Integration
 
@@ -196,8 +177,8 @@ Backslash ↔ Delete (swap)
 
 #### Raycast (`.config/raycast/`)
 Application launcher and workflow automation:
-- Custom extensions in `raycast/ai/`
-- Replaces Spotlight with richer features
+- Extension bundles and manifests in `.config/raycast/extensions/`
+- Includes Easydict, JSON Editor, and Date Format Converter
 
 ### 5. Deployment & Synchronization
 
@@ -291,7 +272,6 @@ Configuration-only deployer:
 | Component | Tool | Config Location | Purpose |
 |-----------|------|-----------------|---------|
 | Primary | Neovim | `.config/nvim/` | Modern modal editor |
-| Fallback | Vim | `.vimrc`, `plugin/` | Legacy environments |
 | IDE | JetBrains + IdeaVim | `.ideavimrc` | GUI IDE with Vim |
 | Notes | Obsidian | `.obsidian.vimrc` | Knowledge base |
 
@@ -351,7 +331,7 @@ brew install --cask ghostty karabiner-elements raycast
 cd ~/.vim && ./deploy.sh
 
 # 6. Install Neovim plugins
-nvim +PackerSync
+nvim +Lazy
 ```
 
 ### Post-Installation
@@ -412,7 +392,7 @@ yazi
 
 ### Neovim
 - **Plugins not loading**: Run `:PackerSync`
-- **LSP not working**: Run `:Mason` to install servers
+- **LSP not working**: Check independent tool paths in `.config/nvim/docs/language-tools.md`
 - **Config errors**: Check `:messages` and `:checkhealth`
 
 ### Symlinks
