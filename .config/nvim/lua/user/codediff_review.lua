@@ -127,7 +127,8 @@ function M.pick_base()
         for line in (result.stdout or ""):gmatch("[^\r\n]+") do
           local ref, symbolic = line:match("^([^\t]+)\t(.*)$")
           if ref and symbolic == "" then
-            choices[#choices + 1] = { ref = ref, name = ref:gsub("^refs/heads/", ""):gsub("^refs/remotes/", "") }
+            local name = ref:gsub("^refs/heads/", ""):gsub("^refs/remotes/", "")
+            choices[#choices + 1] = { ref = ref, name = name, text = name }
           end
         end
         table.sort(choices, function(a, b)
@@ -139,18 +140,62 @@ function M.pick_base()
           vim.notify("Git Diff: no local or remote-tracking branches available", vim.log.levels.WARN)
           return
         end
-        vim.ui.select(choices, {
-          prompt = "Compare with Branch (without checkout):",
-          format_item = function(item) return item.name .. (item.ref == current.ref and "  [current base]" or "") end,
-        }, function(item)
-          if item and valid_request(request, tabpage) then open_at_base(root, item, request, tabpage) end
-        end)
+        -- Do not use vim.ui.select here: its active UI provider can render a
+        -- table-backed choice list as an empty panel.  A direct Snacks picker
+        -- shows the repository refs deterministically and remains searchable.
+        Snacks.picker({
+          title = "Compare with Branch — Enter confirm · Esc cancel (no checkout)",
+          items = choices,
+          preview = "none",
+          layout = { preset = "select", preview = false },
+          matcher = { fuzzy = true, sort_empty = true, filename_bonus = false },
+          format = function(item)
+            local label = item.name
+            if item.ref == current.ref then label = label .. "  [current base]" end
+            local scope = item.ref:match("^refs/heads/") and "local" or "remote"
+            return { { label }, { "  " .. scope, "Comment" } }
+          end,
+          actions = {
+            confirm = function(picker, item)
+              picker:close()
+              if item and valid_request(request, tabpage) then open_at_base(root, item, request, tabpage) end
+            end,
+          },
+        })
       end))
   end)
 end
 
 function M.is_open(tabpage)
   return review_tabs[tabpage or vim.api.nvim_get_current_tabpage()] ~= nil
+end
+
+-- 沿用 gh/gH 的历史入口，原生 CodeDiff history 不依赖 Diffview。
+function M.open_history(current_file)
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local session = session_for(tabpage)
+  local filename = vim.api.nvim_buf_get_name(0)
+  if current_file and session then
+    local path = session.modified
+    if not path or path.absolute == "" then path = session.original end
+    if path then filename = path.absolute end
+  end
+  if current_file and (filename == "" or filename:match("^%a[%w+.-]*://")) then
+    vim.notify("File History: select a source file first", vim.log.levels.WARN)
+    return
+  end
+  review_request = review_request + 1
+  local request = review_request
+  resolve_root(current_root_seed(), function(root)
+    if not valid_request(request, tabpage) then return end
+    local args = { "--repo", root, "history" }
+    if current_file then
+      -- 删除文件仍可查历史；显式 range 避免命令把不存在的路径当成 revision。
+      if vim.fn.filereadable(filename) ~= 1 then args[#args + 1] = "HEAD" end
+      args[#args + 1] = filename
+    end
+    vim.api.nvim_cmd({ cmd = "CodeDiff", args = args }, {})
+  end)
 end
 
 -- 使用 v4.0.8 原生关闭动作，保留未保存合并结果的确认和清理逻辑。
@@ -172,8 +217,6 @@ function M.close_review()
       end
     end
     require("codediff.ui.lifecycle").close(tabpage)
-  elseif vim.fn.exists(":DiffviewClose") == 2 then
-    vim.cmd("DiffviewClose")
   end
 end
 
@@ -264,8 +307,8 @@ function M.bind_merge_keys(tabpage)
       { "mr", "right", "Resolve using Right" },
       { "ma", "both", "Accept Both (Current Conflict)" },
       { "mu", "base", "Reset to Base (Current Conflict)" },
-      { "<C-d>", "next", "Next Unresolved Conflict" },
-      { "<C-f>", "prev", "Previous Unresolved Conflict" },
+      { "<C-d>", "next", "Next Change" },
+      { "<C-f>", "prev", "Previous Change" },
     }
     local all_actions = {
       { "mL", "left", "Accept All from Left (Confirm)" },

@@ -39,8 +39,10 @@ keymap("n", "zZ", "zM", opts)
 keymap("n", "zO", "zR", opts)
 
 -- 移动
-keymap("n", "L", "<End>", opts)           -- L 跳到行尾
-keymap("n", "H", "^", opts)                -- H 跳到行首
+keymap("n", "L", "g$", opts)               -- L 跳到当前视觉行尾
+keymap("n", "H", "g^", opts)               -- H 跳到当前视觉行首
+keymap("x", "L", "g$", opts)               -- Visual 选择延伸至当前视觉行尾
+keymap("x", "H", "g^", opts)               -- Visual 选择延伸至当前视觉行首
 keymap("n", "gn", "%", opts)               -- gn 跳到匹配括号
 
 -- Edit 快捷键
@@ -116,7 +118,7 @@ keymap("n", "<C-n>", "<C-i>", opts)  -- Forward（对应 IdeaVim <C-n> Forward�
 -- ====================
 -- Terminal
 -- ====================
-keymap("n", "st", "<cmd>ToggleTerm direction=horizontal<cr>", opts)
+vim.keymap.set("n", "st", function() require("user.snacks").terminal() end, { silent = true, desc = "Terminal" })
 
 -- ====================
 -- LSP Format
@@ -245,22 +247,15 @@ vim.api.nvim_create_autocmd("TabClosed", {
 })
 vim.keymap.set("n", "<Leader>w", toggle_window_zoom,
   { noremap = true, silent = true, desc = "最大化当前窗口/恢复原布局" })
-keymap("n", "<Leader>c", "<cmd>Bdelete<CR>", opts)         -- CloseContent
-keymap("n", "<Leader>C", "<cmd>%bd|e#|bd#<CR>", opts)     -- CloseAllEditorsButActive
-keymap("n", "gw", "<cmd>NvimTreeToggle<CR>", opts)         -- OpenProjectWindows
-keymap("n", "<Leader>P", "<cmd>NvimTreeFindFile<CR>", opts) -- SelectIn（定位当前文件）
+vim.keymap.set("n", "<Leader>c", function() Snacks.bufdelete() end, { silent = true, desc = "Close Editor" })         -- CloseContent
+vim.keymap.set("n", "<Leader>C", function() Snacks.bufdelete.other() end, { silent = true, desc = "Close Other Editors" })     -- CloseAllEditorsButActive
+vim.keymap.set("n", "gw", function() require("user.project").switch() end, { silent = true, desc = "Switch Project" })         -- SwitchProject
+vim.keymap.set("n", "<Leader>P", function() Snacks.explorer.reveal() end, { silent = true, desc = "Select In Project" }) -- SelectIn（定位当前文件）
 
 -- ====================
 -- 构建（对照 IdeaVim zb = Java.BuildMenu）
 -- ====================
-keymap("n", "zb", "<cmd>TermExec cmd='mvn compile'<CR>", opts)  -- Java.BuildMenu
-
--- ====================
--- 书签（对照 IdeaVim）
--- ====================
-keymap("n", "mm", "<cmd>BookmarkToggle<CR>", opts)   -- ToggleBookmark
-keymap("n", "gm", "<cmd>BookmarkNext<CR>", opts)     -- GotoNextBookmark
-keymap("n", "gM", "<cmd>BookmarkPrev<CR>", opts)     -- GotoPreviousBookmark
+vim.keymap.set("n", "zb", function() require("user.snacks").terminal("mvn compile") end, { silent = true, desc = "Build Project" })  -- Java.BuildMenu
 
 -- ====================
 -- 来自 .vimrc 的全局 buffer-local 映射

@@ -236,6 +236,24 @@ function M.finish(tabpage)
     notify("Open a merge conflict before applying changes.")
     return false
   end
+  -- Navigation can replace a merge pane's displayed buffer without replacing
+  -- the tracked Result. Restore that exact buffer before allowing any Apply;
+  -- keep the displaced buffer and its edits for the user to review separately.
+  if vim.api.nvim_win_get_buf(session.result_win) ~= session.result_bufnr then
+    local displaced = vim.api.nvim_win_get_buf(session.result_win)
+    if vim.bo[displaced].modified and vim.bo[displaced].bufhidden ~= "" and vim.bo[displaced].bufhidden ~= "hide" then
+      notify("The Result pane shows another modified buffer. Save or keep that buffer, then return to the merge Result.")
+      return false
+    end
+    local ok = pcall(vim.api.nvim_win_set_buf, session.result_win, session.result_bufnr)
+    if not ok then
+      notify("Could not restore the merge Result. Keep your current edits and reopen this conflict file.")
+      return false
+    end
+    vim.api.nvim_set_current_win(session.result_win)
+    notify("Restored the merge Result. Review it, then press mf again to Apply Changes.", vim.log.levels.INFO)
+    return false
+  end
   local status = M.status(session, true)
   if status.invalid or status.remaining > 0 or status.markers > 0 then
     local first = status.first or status.first_marker or 1

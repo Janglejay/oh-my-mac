@@ -1,3 +1,8 @@
+-- Neovide keeps the theme background and opaque floating windows.
+if vim.g.neovide then
+  return
+end
+
 local function set_transparent_background()
   local groups = {
     "Normal",
@@ -11,11 +16,10 @@ local function set_transparent_background()
     "FloatBorder",
     "Pmenu",
     -- Common plugin windows
-    "NvimTreeNormal",
-    "NvimTreeNormalNC",
-    "NvimTreeEndOfBuffer",
-    "TelescopeNormal",
-    "TelescopeBorder",
+    "SnacksPicker",
+    "SnacksPickerBorder",
+    "SnacksPickerList",
+    "SnacksPickerPreview",
     "WhichKeyFloat",
   }
 
@@ -27,9 +31,6 @@ end
 vim.opt.winblend = 15
 vim.opt.pumblend = 15
 
-if vim.g.neovide then
-  vim.g.neovide_transparency = 0.85
-end
 
 vim.api.nvim_create_autocmd({ "ColorScheme", "VimEnter" }, {
   desc = "Transparent background",

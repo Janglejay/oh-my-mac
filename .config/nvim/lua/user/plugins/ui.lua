@@ -7,13 +7,13 @@ return {
     lazy = true,
   },
 
-  -- File explorer
+  -- Fixed public release v2.31.0, installed from a tarball; no Git remote.
   {
-    "nvim-tree/nvim-tree.lua",
-    cmd = { "NvimTreeToggle", "NvimTreeOpen", "NvimTreeFocus", "NvimTreeFindFileToggle" },
-    config = function()
-      require "user.nvim-tree"
-    end,
+    name = "snacks.nvim",
+    dir = vim.fn.stdpath("data") .. "/lazy/snacks.nvim",
+    lazy = false,
+    priority = 900,
+    config = function() require("user.snacks").setup() end,
   },
 
   -- Bufferline（tab 栏）
@@ -25,36 +25,12 @@ return {
     end,
   },
 
-  -- Buffer 删除命令（:Bdelete / :Bwipeout）
-  {
-    "moll/vim-bbye",
-    cmd = { "Bdelete", "Bwipeout" },
-  },
-
   -- 状态栏
   {
     "nvim-lualine/lualine.nvim",
     event = "VeryLazy",
     config = function()
       require "user.lualine"
-    end,
-  },
-
-  -- 终端
-  {
-    "akinsho/toggleterm.nvim",
-    cmd  = { "ToggleTerm", "TermExec", "ToggleTermToggleAll" },
-    config = function()
-      require "user.toggleterm"
-    end,
-  },
-
-  -- 启动页
-  {
-    "goolord/alpha-nvim",
-    event = "VimEnter",
-    config = function()
-      require "user.alpha"
     end,
   },
 
@@ -74,39 +50,9 @@ return {
     name = "catppuccin",
     lazy = false,
     priority = 1000,
-  },
-  -- Tokyo Night - 高对比度现代风
-  {
-    "folke/tokyonight.nvim",
-    lazy = false,
-    priority = 1000,
-  },
-  -- Nightfox - 温暖舒适风
-  {
-    "EdenEast/nightfox.nvim",
-    lazy = false,
-    priority = 1000,
-  },
-  -- 旧配色，改为懒加载
-  {
-    "morhetz/gruvbox",
-    lazy = true,
-  },
-  {
-    "lunarvim/darkplus.nvim",
-    lazy = true,
-  },
-  {
-    "tanvirtin/monokai.nvim",
-    lazy = true,
-  },
-  -- 配色管理器（最后加载，应用选中的配色）
-  {
-    dir = vim.fn.stdpath("config") .. "/lua/user/colorschemes",
-    lazy = false,
-    priority = 999,
     config = function()
-      require("user.colorschemes").apply()
+      require("user.colorschemes.catppuccin").setup()
+      vim.cmd.colorscheme("catppuccin")
     end,
   },
 
@@ -147,15 +93,6 @@ return {
     end,
   },
 
-  -- 项目管理
-  {
-    "ahmedkhalf/project.nvim",
-    event = "VeryLazy",
-    config = function()
-      require "user.project"
-    end,
-  },
-
   -- 透明背景
   {
     "xiyaowong/transparent.nvim",
@@ -168,10 +105,6 @@ return {
   -- 工具库（被多个插件依赖）
   {
     "nvim-lua/plenary.nvim",
-    lazy = true,
-  },
-  {
-    "nvim-lua/popup.nvim",
     lazy = true,
   },
 }

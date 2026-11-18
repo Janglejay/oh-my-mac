@@ -7,8 +7,6 @@ local modules = {
   "user.plugins.git",
   "user.plugins.java",
   "user.plugins.search",
-  "user.plugins.dap",
-  "user.plugins.test",
   "user.plugins.editing",
   "user.plugins.spring",
 }

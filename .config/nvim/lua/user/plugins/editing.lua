@@ -111,11 +111,9 @@ return {
         return best
       end
 
-      -- 返回光标所在的最近一层方法/类的开头（如果光标已经在开头则返回 nil）
-      -- K 用这个来"跳出"当前方法，避免原地跳自己
+      -- 只检查当前方法/函数；类体中的空行应按文档顺序查找相邻声明。
       local node_types = {
         "method_declaration", "constructor_declaration",
-        "class_declaration", "interface_declaration", "enum_declaration",
         "function_declaration", "method_definition", "arrow_function", "function_expression",
       }
       local function containing_start()
@@ -124,10 +122,14 @@ return {
         while node do
           if vim.tbl_contains(node_types, node:type()) then
             local sr, sc = node:start()
-            -- 只有光标不在该节点开头时才返回（在开头说明已经是目标，不需要排除）
-            if sr + 1 ~= row or sc ~= col then
-              return { sr + 1, sc }
+            for i = 0, node:named_child_count() - 1 do
+              local child = node:named_child(i)
+              if child and child:type() == "identifier" then
+                local name_row = child:start()
+                return { sr + 1, sc }, name_row + 1
+              end
             end
+            return { sr + 1, sc }, sr + 1
           end
           node = node:parent()
         end
@@ -137,16 +139,21 @@ return {
       -- J/K: 按文档顺序访问类声明 + 方法/构造方法，光标落在名字上
       local function jump(direction)
         local saved = vim.api.nvim_win_get_cursor(0)
-        local from  = saved
 
         if direction == "prev" then
-          -- K: 如果光标在方法/类内部（非开头），先移到该方法开头再找上一个
-          -- 否则 goto_previous_start 会把自己当"上一个"，感觉上没动
-          local cs = containing_start()
-          if cs then from = cs end
+          -- K: 方法体内先回到当前方法名；只有已在声明开头时才跳上一个。
+          local cs, name_row = containing_start()
+          if cs then
+            vim.api.nvim_win_set_cursor(0, cs)
+            if saved[1] ~= name_row then
+              land_on_name()
+              return
+            end
+            saved = cs
+          end
         end
 
-        vim.api.nvim_win_set_cursor(0, from)
+        vim.api.nvim_win_set_cursor(0, saved)
         local target = best_target(direction, { "@function.outer", "@class.outer" })
         vim.api.nvim_win_set_cursor(0, saved)   -- 先还原，再跳到 target
 

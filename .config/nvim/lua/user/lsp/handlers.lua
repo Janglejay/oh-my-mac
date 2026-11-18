@@ -72,16 +72,19 @@ local function lsp_keymaps(bufnr)
 
   -- gd: 上下文感知（IDEA Cmd+B 风格）
   --   • 在引用处 → 跳到定义
-  --   • 在定义处 → 显示所有引用（支持字段/属性/Lombok 生成的 getter/setter）
-  vim.keymap.set("n", "gd", function()
+  --   • 在定义处 → 显示 Lathe 索引中的引用
+  local function smart_goto()
+    if vim.bo.filetype == "java" and require("user.java_dependency_usages").at_field() then return end
+    local dependency = package.loaded["user.java_dependency_navigation"]
+    if dependency and dependency.references_at_field() then return end
     local bufnr = vim.api.nvim_get_current_buf()
     local method = "textDocument/definition"
     if #vim.lsp.get_clients({ bufnr = bufnr, method = method }) == 0 then
-      vim.notify("LSP 未连接，请等待 jdtls 就绪", vim.log.levels.WARN)
+      vim.notify("LSP 未连接，请等待 Lathe 就绪", vim.log.levels.WARN)
       return
     end
 
-    local fzf = require("fzf-lua")
+    local navigation = require("user.navigation")
     cancel_goto(bufnr)
     local request = {
       winid = vim.api.nvim_get_current_win(),
@@ -97,20 +100,32 @@ local function lsp_keymaps(bufnr)
       vim.notify("gd: 查询超时（30s），可继续操作并稍后重试", vim.log.levels.WARN)
     end, 30000)
 
+    local function still_here()
+      return goto_requests[bufnr] == request
+        and vim.api.nvim_buf_is_valid(bufnr)
+        and vim.api.nvim_get_current_win() == request.winid
+        and vim.api.nvim_get_current_buf() == bufnr
+        and vim.api.nvim_buf_get_changedtick(bufnr) == request.changedtick
+        and vim.deep_equal(vim.api.nvim_win_get_cursor(0), request.cursor)
+    end
+    local function show_definition(location, encoding)
+      -- Keep the jump in the review window so Ctrl-O returns to the original diff column.
+      local review = package.loaded["user.codediff_review"]
+      local in_review = vim.wo.diff or (review and review.is_open())
+      if vim.lsp.util.show_document(location, encoding, { focus = true, reuse_win = not in_review }) then
+        vim.cmd("normal! zz")
+      end
+    end
+    local function missing_definition()
+      vim.notify("gd: 未找到光标处符号的定义", vim.log.levels.WARN)
+    end
     request.cancel = vim.lsp.buf_request_all(bufnr, method, function(client)
       -- 按各客户端的位置编码生成参数，避免中文前缀导致列号偏移。
       return vim.lsp.util.make_position_params(request.winid, client.offset_encoding)
     end, function(results)
       vim.schedule(function()
         if goto_requests[bufnr] ~= request then return end
-        cancel_goto(bufnr)
-        if not vim.api.nvim_buf_is_valid(bufnr)
-            or vim.api.nvim_get_current_win() ~= request.winid
-            or vim.api.nvim_get_current_buf() ~= bufnr
-            or vim.api.nvim_buf_get_changedtick(bufnr) ~= request.changedtick
-            or not vim.deep_equal(vim.api.nvim_win_get_cursor(0), request.cursor) then
-          return
-        end
+        if not still_here() then cancel_goto(bufnr); return end
         vim.api.nvim_echo({ { "" } }, false, {})
 
         local defs, encodings, seen = {}, {}, {}
@@ -140,12 +155,31 @@ local function lsp_keymaps(bufnr)
           end
         end
         if not successful then
+          cancel_goto(bufnr)
           vim.notify("gd: " .. (error_message or "语言服务已断开"), vim.log.levels.WARN)
           return
         end
 
         -- 保留原操作：声明所在行查引用，使用处跳定义。
-        local at_def = #defs == 0
+        if #defs == 0 then
+          local lathe = vim.lsp.get_clients({ bufnr = bufnr, name = "lathe" })[1]
+          local pending = lathe and require("user.java_dependency_navigation").resolve(lathe, bufnr, request.winid,
+            function(location, open_bytecode)
+              if goto_requests[bufnr] ~= request then return end
+              local valid = still_here()
+              cancel_goto(bufnr)
+              if not valid then return end
+              if location then show_definition(location, "utf-8")
+              elseif open_bytecode then open_bytecode()
+              else missing_definition() end
+            end)
+          if pending then request.cancel = pending; return end
+          cancel_goto(bufnr)
+          missing_definition()
+          return
+        end
+        cancel_goto(bufnr)
+        local at_def = false
         local cur_uri = vim.uri_from_bufnr(bufnr)
         for _, location in ipairs(defs) do
           local range = location.targetSelectionRange or location.range or location.targetRange
@@ -156,24 +190,29 @@ local function lsp_keymaps(bufnr)
           end
         end
         if at_def then
-          fzf.lsp_references({ fzf_opts = { ["--query"] = "!.m2" } })
+          navigation.references()
         elseif #defs == 1 then
-          -- 审查窗口内就地跳转，避免复用另一 Tab 的同一文件，确保 Ctrl-O 回到原 Diff 列。
-          local review = package.loaded["user.codediff_review"]
-          local in_review = vim.wo.diff or (review and review.is_open())
-          if vim.lsp.util.show_document(defs[1], encodings[1], { focus = true, reuse_win = not in_review }) then
-            vim.cmd("normal! zz")
-          end
+          show_definition(defs[1], encodings[1])
         else
-          fzf.lsp_definitions()
+          navigation.definitions()
         end
       end)
     end)
+  end
+  vim.keymap.set("n", "gd", function()
+    if not require("user.mybatis_navigation").jump_from_java(smart_goto) then smart_goto() end
   end, vim.tbl_extend("force", o, { desc = "gd: smart goto" }))
 
   -- 其他 LSP 快捷键
+  vim.keymap.set("n", "gu", vim.lsp.buf.declaration, vim.tbl_extend("force", o, { desc = "GotoDeclaration" }))
+  vim.keymap.set("n", "<Leader>T", function()
+    vim.lsp.buf.code_action({ context = { only = { "refactor" } } })
+  end, vim.tbl_extend("force", o, { desc = "Refactor" }))
+  vim.keymap.set("n", "<Leader>oi", function()
+    vim.lsp.buf.code_action({ context = { only = { "source.organizeImports" } } })
+  end, vim.tbl_extend("force", o, { desc = "OrganizeImports" }))
   vim.keymap.set("n", "<c-p>",    vim.lsp.buf.hover,        vim.tbl_extend("force", o, { desc = "Hover" }))
-  vim.keymap.set("n", "gi",      "<cmd>lua require('fzf-lua').lsp_implementations()<CR>", o)
+  vim.keymap.set("n", "gi",      function() require("user.navigation").implementations() end, o)
   vim.keymap.set("n", "<Leader>R", vim.lsp.buf.rename,      vim.tbl_extend("force", o, { desc = "Rename" }))
   vim.keymap.set("n", "ga",      vim.diagnostic.open_float, vim.tbl_extend("force", o, { desc = "Show Diagnostic" }))
   vim.keymap.set("n", "<F2>",    function()
@@ -208,13 +247,13 @@ M.capabilities = ok
   and cmp_lsp.default_capabilities()
   or  vim.lsp.protocol.make_client_capabilities()
 
--- 禁用 willSaveWaitUntil：阻止 jdtls 等 LSP 在保存前注入格式化 edits
+-- 禁用 willSaveWaitUntil：阻止 LSP 在保存前注入格式化 edits
 local sync = M.capabilities.textDocument and M.capabilities.textDocument.synchronization
 if sync then
   sync.willSaveWaitUntil = false
 end
 
--- ── 全局 LSP 超时优化（jdtls 索引慢，需要更长的默认超时）────────
+-- ── 全局 LSP 超时优化（大型项目索引慢，需要更长的默认超时）────────
 -- 默认 10s 对于大型 Java 项目不够，增加到 60s
 vim.lsp.buf_request_sync_default_timeout = 60000
 

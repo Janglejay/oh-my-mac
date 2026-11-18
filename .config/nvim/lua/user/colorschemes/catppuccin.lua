@@ -30,6 +30,8 @@ return {
       highlight_overrides = {
         mocha = function(colors)
           return {
+            -- LSP tag=Unnecessary: dim only declarations identified by the language server.
+            DiagnosticUnnecessary = { fg = colors.overlay0, italic = true },
             -- 函数和方法更加突出
             ["@function"] = { fg = colors.blue, style = { "bold" } },
             ["@function.call"] = { fg = colors.blue, style = { "bold" } },
@@ -83,11 +85,9 @@ return {
         },
         cmp = true,
         gitsigns = true,
-        nvimtree = true,
-        telescope = true,
+        snacks = true,
         bufferline = true,
         lualine = true,
-        indent_blankline = { enabled = true },
       },
     })
   end,

@@ -129,6 +129,68 @@ local function apply(action, target)
   return ok
 end
 
+-- Merge changes use three coordinate spaces. Project every changed BASE anchor
+-- into the focused pane; include all tracked conflicts even when Result is BASE.
+-- Compute on demand so accepted edits, manual edits and undo use current lines.
+local function navigate_change(session, direction)
+  if not ready(session) or direction ~= "next" and direction ~= "prev" then return false end
+  local current_buf = vim.api.nvim_get_current_buf()
+  if current_buf ~= session.original_bufnr and current_buf ~= session.modified_bufnr and current_buf ~= session.result_bufnr then return false end
+  local base = session.merge_base_lines
+  if type(base) ~= "table" then return false end
+  local diffs, line_counts = {}, {}
+  local diff = require("codediff.core.diff")
+  local options = require("codediff.ui.view.render").diff_options()
+  for _, buf in ipairs({ session.original_bufnr, session.modified_bufnr, session.result_bufnr }) do
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    local result = diff.compute_diff(base, lines, options)
+    if not result then return false end
+    diffs[buf], line_counts[buf] = result.changes or {}, #lines
+  end
+
+  local function project(line)
+    local offset = 0
+    for _, change in ipairs(diffs[current_buf]) do
+      if line < change.original.start_line then break end
+      if line <= change.original.start_line or line < change.original.end_line then
+        return change.modified.start_line
+      end
+      offset = change.modified.end_line - change.original.end_line
+    end
+    return line + offset
+  end
+
+  local seen, positions = {}, {}
+  local function add(line)
+    if not line then return end
+    line = math.max(1, math.min(line, math.max(1, line_counts[current_buf])))
+    if not seen[line] then seen[line] = true; positions[#positions + 1] = line end
+  end
+  for _, changes in pairs(diffs) do
+    for _, change in ipairs(changes) do add(project(change.original.start_line)) end
+  end
+  local tracking = require("codediff.ui.conflict.tracking")
+  for _, block in ipairs(session.conflict_blocks) do
+    add(tracking.get_block_start_line(session, block, current_buf))
+  end
+  table.sort(positions)
+  local current = vim.api.nvim_win_get_cursor(0)[1]
+  for step = 1, #positions do
+    local index = direction == "next" and step or #positions - step + 1
+    local line = positions[index]
+    if direction == "next" and line > current or direction == "prev" and line < current then
+      vim.api.nvim_win_set_cursor(0, { line, 0 })
+      vim.cmd("normal! zz")
+      vim.api.nvim_echo({ { string.format("Change %d of %d", index, #positions), "None" } }, false, {})
+      return true
+    end
+  end
+  return false -- Match ordinary Diff: stop at the boundary, never change files.
+end
+
+-- Stateless navigation entry also supports updating active views without resetting merge state.
+M.navigate_change = navigate_change
+
 --- Apply to the actual cursor block, including Result; context never reuses an old selection.
 --- @param action string ours|theirs|both|base|next|prev
 --- @return boolean
@@ -140,10 +202,9 @@ function M.action(action)
   if action == "next" or action == "prev" then
     local buf = vim.api.nvim_get_current_buf()
     if buf ~= session.original_bufnr and buf ~= session.modified_bufnr and buf ~= session.result_bufnr then return false end
-    local navigation = require("codediff.ui.conflict.navigation")
-    if action == "next" then navigation.navigate_next_conflict(tab) else navigation.navigate_prev_conflict(tab) end
+    local moved = navigate_change(session, action)
     M.refresh()
-    return true
+    return moved
   end
   if action ~= "ours" and action ~= "theirs" and action ~= "both" and action ~= "base" then return false end
   local block = block_at_cursor(session, true)
@@ -273,13 +334,13 @@ local function install_hook()
     local win = tonumber(vim.g.statusline_winid)
     local state = windows[win]
     if not state then return base end
-    local arrow = (state.by_line or {})[vim.v.lnum .. ":" .. vim.v.virtnum]
     local badge = (state.badges_by_line or {})[vim.v.lnum .. ":" .. vim.v.virtnum]
-    if vim.v.virtnum < 0 and vim.v.relnum < 0 then arrow, badge = nil, nil end
+    if vim.v.virtnum < 0 and vim.v.relnum < 0 then badge = nil end
     local text = badge and render_valid(state, win) and badge.text or "  "
     local highlight = badge and badge.hl or "UserCodeDiffMergeArrow"
-    local prefix = "%#" .. highlight .. "#" .. text .. "%* "
-    if arrow then prefix = "%#" .. highlight .. "#%@v:lua." .. click_name .. "@" .. text .. "%T%* " end
+    -- Neovim fixes the statuscolumn click handler per column, not per row.
+    -- Keep its region stable; the handler validates the exact visible arrow.
+    local prefix = "%#" .. highlight .. "#%@v:lua." .. click_name .. "@" .. text .. "%T%* "
     return prefix .. base
   end
   native.render = wrapper

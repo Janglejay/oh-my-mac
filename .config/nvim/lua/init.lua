@@ -1,5 +1,4 @@
-local java_backend = require("user.java_backend")
-java_backend.setup()
+require("user.lathe_config").setup()
 
 -- Compatibility with the installed Saga API used by the call-hierarchy extension.
 package.preload["lspsaga.config"] = function() return require("lspsaga").config end
@@ -15,13 +14,14 @@ end
 
 -- 基础配置（不依赖任何插件）
 require "user.options"
+require("user.neovide").setup()
 require "user.keymaps"
 require "user.vim-compat"
 require "user.autocommands"
 
 -- 插件加载
 lazy.setup(require("user.plugins"), {
-  install = { colorscheme = { "gruvbox", "habamax" } },
+  install = { colorscheme = { "catppuccin", "habamax" } },
   ui = { border = "rounded" },
   performance = {
     reset_packpath = true,  -- 确保 packpath 正确重置
@@ -40,4 +40,7 @@ if vim.loader then
   vim.loader.reset()
 end
 
-if java_backend.server == "lathe" then require("user.lathe_live").setup() end
+require("user.project").setup()
+require("user.mybatis_navigation").setup()
+require("user.lsp.servers")
+require("user.lathe_live").setup()

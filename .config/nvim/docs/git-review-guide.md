@@ -1,6 +1,6 @@
 # Git 审查与三方合并
 
-Leader 为 `,`。主审查使用 CodeDiff **4.0.8**，Diffview 保留为历史与回退工具。界面使用英文，参考 IDEA 的合并术语；这是 Neovim 终端展示，并非 IDEA 的原生图形组件。
+Leader 为 `,`。审查、历史与合并统一使用 CodeDiff **4.0.8**；普通源码中的变更标记和块操作保留 Gitsigns。界面使用英文，参考 IDEA 的合并术语；这是 Neovim 终端展示，并非 IDEA 的原生图形组件。
 
 ## 安装与版本
 
@@ -31,8 +31,9 @@ tar -xzf /tmp/codediff-v4.0.8.tar.gz --strip-components=1 -C "$HOME/.local/share
 | `gd` / `Ctrl+o` | 沿用已有 LSP 跳转/返回；历史修订侧不保证具有完整项目语义 |
 | `,w` | 最大化当前拆分，再按恢复；保留期间的光标和跳转结果 |
 | `,gc` / `q` | 关闭视图，保留未完成与未保存确认 |
-| `,gh` / `,gH` | Diffview 当前文件/项目历史 |
-| `:DiffviewBranchReview` | 用 Diffview 按当前比较基准回退审查 |
+| `,gh` / `,gH` | CodeDiff 当前文件/项目历史 |
+
+选择基准：按`,gB`（大写B），输入分支名过滤，用↑/↓或Ctrl+n/p选中，Enter确认，Esc取消。`,gb`（小写b）是Checkout分支，含义不同。合并未完成时更换比较基准会另开普通审查，保留原合并Result；不会把正在合入的Git分支改成新选择。
 
 普通分支审查比较所选引用的 **tip 到最终工作区**，不是 merge-base，也不只看未提交修改；包含已提交、暂存、未暂存、未跟踪以及新增/删除/重命名。Git 自身忽略的文件不强制纳入。默认基准 `origin/master`，可按仓库选择其他引用；选择仅在当前会话记忆，不 checkout、不自动 fetch。
 
@@ -40,7 +41,7 @@ tar -xzf /tmp/codediff-v4.0.8.tar.gz --strip-components=1 -C "$HOME/.local/share
 
 ## 合并操作
 
-直接在任意合并代码窗按 `m` 打开 Merge 菜单，快按下面的两键操作也可直接执行。它们仅在合并视图接管，退出后恢复原有普通窗口映射（包括 Vim mark 和已配置的书签快捷键）。
+直接在任意合并代码窗按 `m` 打开 Merge 菜单，快按下面的两键操作也可直接执行。它们仅在合并视图接管，退出后恢复原有普通窗口映射（包括 Vim mark）。
 
 | 快捷键 | 英文动作 | 范围 |
 | --- | --- | --- |
@@ -50,8 +51,10 @@ tar -xzf /tmp/codediff-v4.0.8.tar.gz --strip-components=1 -C "$HOME/.local/share
 | `mL` / `mR` / `mA` / `mU` | 整文件接受左/右/双方/还原 | 确认后执行；还原包含已处理块，其余只处理未解决块 |
 | `mz` / `mZ` | Undo / Redo | 中间 Result 的编辑历史 |
 | `u` / `Ctrl+r` | Undo / Redo | 同样作用于 Result，支持次数并限制初始边界 |
-| `Ctrl+d` / `Ctrl+f` | Next / Previous Unresolved Conflict | 跳过已处理块 |
+| `Ctrl+d` / `Ctrl+f` | Next / Previous Change | 当前文件全部变更：未处理/已处理冲突、自动合并与手工修改；首尾停止，不自动切文件 |
 | `mf` / `,gmf` / 点击 Apply Changes | Apply Changes | 保存并标记当前文件已解决 |
+
+三列使用各自当前行号定位同一批变更，接受、手改、Undo/Redo后重新计算位置；不会因为冲突已处理就跳过。导航只移动光标，不修改、保存或暂存代码。
 
 未解决块旁 `→/←` 可点击接受对应输入侧。已处理的勾选/忽略标记为状态展示；需要更换选择时，先 `mu` 还原或 `mz` 撤销。
 
@@ -82,6 +85,8 @@ flowchart LR
     G --> H[Show current file staged Diff]
 ```
 
+若提示Result窗口变化，说明中间窗当前展示的不是此合并会话跟踪的Result buffer。`mf`先恢复原Result并提示复核；不会自动保存或暂存。确认内容后再按`mf`。被替换窗口原来展示的buffer及其未保存修改继续保留。
+
 `:w` 只保存，不代表 Git 已解决。Apply Changes 会检查未处理块与残留冲突标记，正常保存 Result，精确暂存当前路径，再核对该路径没有未合并阶段且暂存内容匹配保存结果；其他文件不被一并暂存。完成后该文件从 Merge Conflicts 移到 Staged Changes，显示普通 Diff；若结果等于 HEAD，可能没有 staged 条目。
 
 保存失败或暂存失败保留视图供重试；保存成功但暂存失败时，磁盘已保存，不能声称保存已回滚。关闭未完成视图会提示，默认取消；原生未保存结果仍保留 Discard/Cancel 守卫。
@@ -92,7 +97,7 @@ flowchart LR
 
 | 文件 | 职责 |
 | --- | --- |
-| `lua/user/plugins/git.lua` | CodeDiff 目录 spec、Diffview 历史/回退与入口 |
+| `lua/user/plugins/git.lua` | CodeDiff 目录 spec、原生历史与审查入口 |
 | `lua/user/codediff_review.lua` | 基准选择、会话键位、英文分组及关闭提示 |
 | `lua/user/codediff_merge_controls.lua` | 块旁箭头、gutter、winbar、撤销边界与清理 |
 | `lua/user/codediff_merge_finish.lua` | 当前文件保存/暂存校验、错误处理、回审查 |
@@ -102,3 +107,7 @@ flowchart LR
 已在合成本地仓库验证：分支累计变更、单文件上下文、基准选择、块旁点击、空侧与多行、左右换位、手改和 Undo/Redo；完成流程覆盖未完成拒绝、单文件保存/暂存、保存失败、索引锁失败重试及返回当前文件；视觉验证覆盖五类状态的实际文字、RGB、来源码和空侧刷新。
 
 这不是所有平台/主题的兼容保证。配置仓库只发布通用源码和文档，不包含工程样本、运行截图、日志、依赖缓存、本机服务或认证信息。
+
+## 历史与普通源码操作
+
+`,gh` 为当前文件历史，`,gH` 为项目历史，均打开原生 CodeDiff history。文件路径含空格和从审查窗口进入历史均已在独立本地仓库验证。普通源码里的 `Ctrl+d/f`、`Ctrl+u`、行/文件 blame 由 Gitsigns 提供；CodeDiff 的 gutter 与块操作只作用于 Diff 视图，不等于普通源码全局 Git 标记。

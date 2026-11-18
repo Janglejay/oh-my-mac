@@ -1,7 +1,7 @@
 -- Maven discovery, per-project model preparation and live review lifecycle.
 local M = { contexts = {} }
 local uv = vim.uv
-local options = require("user.java_backend").lathe
+local options = require("user.lathe_config")
 local script = vim.fn.expand("~/.config/nvim/scripts/lathe-model.py")
 local by_pom, by_analysis, inspecting, inspection_jobs, queue = {}, {}, {}, {}, {}
 local timer, active, stopped, last_context, ticks
@@ -100,7 +100,7 @@ local function finish(ctx, result)
     if not ctx.attempted then ctx.attempted = signature(ctx) end
     M.last_failure = ctx
     -- Keep failures non-blocking; full output is available on explicit request.
-    vim.api.nvim_echo({ { "Lathe 准备失败；,jr 重试，:LatheLog 查看日志", "WarningMsg" } }, true, {})
+    vim.api.nvim_echo({ { "Lathe 准备失败；,lr 重试，:LatheLog 查看日志", "WarningMsg" } }, true, {})
   end
   changed()
 end
@@ -131,7 +131,28 @@ end
 
 local function ensure_path(name, buf, callback)
   if stopped then return end
-  if not name or inside(name, options.state_root) then return end
+  if not name then return end
+  if inside(name, options.state_root) then
+    -- Generated and extracted sources belong to the client that produced them.
+    -- Reuse that model without discovering or building a second project.
+    local ctx = buf and M.context(buf)
+    if ctx and ctx.ready then
+      ctx.dormant = false
+      if callback then callback(ctx) else M.attach(buf) end
+      return
+    end
+    local key = name:match("^" .. vim.pesc(options.state_root) .. "/projects/(%x+)/cache/deps/")
+    if key then
+      local state = options.state_root .. "/projects/" .. key
+      local identity = read_json(state .. "/identity.json")
+      if identity and identity.id == key and identity.cache == state .. "/cache"
+          and type(identity.source) == "string" and not inside(canonical(identity.source), options.state_root)
+          and uv.fs_stat(identity.source .. "/pom.xml") then
+        ensure_path(canonical(identity.source .. "/pom.xml"), buf, callback)
+      end
+    end
+    return
+  end
   -- A managed build copy must not recursively create another analysis worktree.
   local key = name:match("^" .. vim.pesc(canonical(options.worktree_root)) .. "/lathe%-(%x+)/")
   if key then
@@ -175,7 +196,8 @@ local function ensure_path(name, buf, callback)
       ctx.waiters[b] = ctx.waiters[b] or {}
       if cb then ctx.waiters[b][#ctx.waiters[b] + 1] = cb end
     end
-    if ctx.ready then attach_waiters(ctx) else enqueue(ctx, false) end
+    if ctx.ready then attach_waiters(ctx) end
+    if not ctx.ready or data.needs_analysis_refresh then enqueue(ctx, false) end
   end))
 end
 function M.ensure(buf, callback)
@@ -218,7 +240,7 @@ function M.status()
   local name = vim.fs.basename(ctx.source)
   if ctx.status == "preparing" then return "busy", "Lathe 准备模型 · " .. name end
   if ctx.status == "queued" or ctx.waiting then return "busy", "Lathe 等待准备 · " .. name end
-  if ctx.status == "failed" then return "error", "Lathe 准备失败 · " .. name .. " · ,jr 重试" end
+  if ctx.status == "failed" then return "error", "Lathe 准备失败 · " .. name .. " · ,lr 重试" end
   local cs = vim.lsp.get_clients({ name = "lathe" })
   for _, c in ipairs(cs) do
     if c.config.root_dir == ctx.analysis then return c.initialized and "ready" or "busy", "Lathe · Java 8 · " .. name end

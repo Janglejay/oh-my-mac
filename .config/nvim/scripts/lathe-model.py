@@ -21,6 +21,7 @@ PYTHON = sys.executable
 SCRIPT = Path(__file__).resolve()
 CHILD = None
 POM_FINGERPRINTS = {}
+ANALYSIS_LOMBOK = (1, 18, 38)
 SKIP = {'.git', '.lathe', 'target', 'node_modules', '.venv', '__pycache__', '.idea', '.gradle',
         '.claude', '.codex', '.agents', '.opencode', '.gitnexus'}
 
@@ -485,6 +486,7 @@ def publish_live():
         else:
             values.append(name + ":missing")
     atomic_json(state_path, {"source": str(SOURCE), "build": str(WORKTREE), "generation": generation,
+                            "analysis_lombok": list(ANALYSIS_LOMBOK),
                             "watch": sorted(watched), "watch_values": values, "published_at": time.time()})
     shutil.rmtree(stage)
 
@@ -520,7 +522,8 @@ def owned(command, cwd, log, timeout=600):
 
 
 def analysis_parameters():
-    default_lombok = SHARED_REPO / 'org/projectlombok/lombok/1.18.30/lombok-1.18.30.jar'
+    version_text = '.'.join(map(str, ANALYSIS_LOMBOK))
+    default_lombok = SHARED_REPO / f'org/projectlombok/lombok/{version_text}/lombok-{version_text}.jar'
     binding = SHARED_REPO / 'org/projectlombok/lombok-mapstruct-binding/0.2.0/lombok-mapstruct-binding-0.2.0.jar'
     for path in (WORKTREE / '.lathe').rglob('lsp-params-*.json'):
         value = json.loads(path.read_text())
@@ -531,7 +534,10 @@ def analysis_parameters():
             for item in value.get(key, []):
                 if '/org/projectlombok/lombok/' in item:
                     version = re.search(r'lombok-(\d+)\.(\d+)\.(\d+)', Path(item).name)
-                    if not version or tuple(map(int, version.groups())) < (1, 18, 30):
+                    # The live compiler needs @lombok.Generated to link accessors to fields.
+                    if not version or tuple(map(int, version.groups())) < ANALYSIS_LOMBOK:
+                        if not default_lombok.is_file():
+                            raise RuntimeError(f'Lathe analysis requires Lombok {version_text} in the local Maven cache')
                         item = str(default_lombok)
                 updated.append(item)
             value[key] = updated
@@ -606,7 +612,8 @@ def prepare(info, args):
             raise RuntimeError('Maven completed without producing a Lathe workspace model')
         analysis_parameters()
         atomic_json(TRIAL / 'capture-result.json', {'exit_code': 0, 'time_ns': time.time_ns(),
-                    'source': str(SOURCE), 'build_jdk': str(PROJECT_JDK), 'analysis_release': '8'})
+                    'source': str(SOURCE), 'build_jdk': str(PROJECT_JDK), 'analysis_release': '8',
+                    'analysis_lombok': list(ANALYSIS_LOMBOK)})
         publish_live()
         live_state = json.loads((LIVE / 'live-state.json').read_text())
         extra = {name: value for name, value in zip(live_state['watch'], live_state['watch_values'])}
@@ -644,6 +651,10 @@ def main():
         root, repo = discover(args.file or args.root or os.getcwd())
         info = context(root, repo, args)
         if args.action == 'inspect':
+            live_state = Path(info['analysis']) / 'live-state.json'
+            if info['model_ready']:
+                version = json.loads(live_state.read_text()).get('analysis_lombok') if live_state.is_file() else None
+                info['needs_analysis_refresh'] = version != list(ANALYSIS_LOMBOK)
             state_file = Path(info['state']) / 'state.json'
             if state_file.exists():
                 state = json.loads(state_file.read_text())

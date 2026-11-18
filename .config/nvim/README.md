@@ -1,12 +1,14 @@
 # Neovim 配置
 
-面向 Java 代码审查和日常编辑的 Neovim 配置，也保留 Python、TypeScript/Vue、Rust 等语言支持。
+面向 Java 代码审查和日常编辑的 Neovim 配置，也保留 Python、TypeScript/Vue 语义服务，以及 Rust 等语言的语法高亮。
 
-当前 Java 默认后端为 **Lathe 0.3.1**，打开 Maven 工程自动准备 Java 8 分析模型；JDT LS 保留为一行配置可切换的后端。重启 Neovim 后加载修改，不向各项目写入编辑器配置。
+Java 只使用 **Lathe 0.3.1**，打开 Maven 工程自动准备 Java 8 分析模型。其他语言由独立安装的语言服务提供支持，快捷键和补全共用 Neovim 的统一配置。重启 Neovim 后加载修改，不向各项目写入编辑器配置。
 
 ---
 
 ## 目录
+
+完整文件、插件、工具的保留／删除结果与替代方案见 [全量配置盘点](docs/config-inventory.md)。
 
 1. [特性概览](#特性概览)
 2. [安装](#安装)
@@ -22,16 +24,16 @@
 ## 特性概览
 
 | 功能 | 实现方案 | IDEA 对应 |
-|------|----------|-----------|
-| **代码导航** | fzf-lua + Lathe / JDT LS | Search Everywhere / Goto |
-| **代码补全** | nvim-cmp + LSP | 智能补全 |
-| **代码格式化** | conform.nvim | `Cmd+Alt+L` |
-| **调试** | nvim-dap + dap-ui | Debug 工具窗口 |
-| **测试运行** | neotest + neotest-java | JUnit 运行器 |
-| **版本控制** | gitsigns + CodeDiff（主审查）/ Diffview（历史与回退） | Git 工具窗口 |
-| **调用链分析** | lspsaga | Call Hierarchy |
-| **文件结构** | aerial.nvim | Structure |
-| **方法跳转** | treesitter | `Ctrl+Up/Down` |
+|---|---|---|
+| 代码导航 | Snacks Picker + Lathe/各语言LSP | Search Everywhere / Goto |
+| 代码补全 | nvim-cmp + LSP | 智能补全 |
+| 代码格式化 | conform.nvim | Reformat |
+| 版本控制 | CodeDiff + Gitsigns | Git审查、历史、合并与源码行级操作 |
+| 调用链 | lspsaga | 多级 Call Hierarchy |
+| 文件大纲 | aerial.nvim | Structure |
+| 方法跳转 | Treesitter + textobjects | Method Up/Down |
+
+配置专注审查、导航与编辑，已移除 Neovim 测试运行器和调试器。完整最小集判断与最新工具比较见 [导航与界面分析](docs/navigation-ui-minimum.md)。
 
 ---
 
@@ -41,14 +43,13 @@
 
 | 依赖 | 版本 | 安装 |
 |------|------|------|
-| Neovim | 0.11+（本机验证 0.12.3） | `brew install neovim` |
-| Java 运行时 | 21，供 Lathe / JDT LS 运行 | `brew install --cask zulu@21` |
+| Neovim | 0.12+（本机验证 0.12.3） | `brew install neovim` |
+| Java 运行时 | 21，供 Lathe 运行 | `brew install --cask zulu@21` |
 | Java 项目编译器 | 8，供独立构建副本编译 | 安装 JDK 8，保留项目原有版本 |
 | Maven | 本机验证 3.9.11 | `brew install maven`；项目依赖须已缓存 |
-| Python | 3.10+ | `java_backend.lua` 中配置可执行文件 |
+| Python | 3.10+ | `lathe_config.lua` 中配置可执行文件 |
 | ripgrep | - | `brew install ripgrep` |
 | fd | - | `brew install fd` |
-| fzf | - | `brew install fzf` |
 | Node.js | 18+ | `brew install node` |
 | Git | - | `brew install git` |
 
@@ -60,7 +61,7 @@
 nvim /path/to/maven-project
 ```
 
-Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，不由 Mason 安装。新机器须先准备这些资源，并核对 `lua/user/java_backend.lua` 的资源、Python 和 JDK 路径；只有配置仓库本身不足以完成 Lathe 安装。详见下方 [Java 开发专题](#java-开发专题)。
+Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，不由 Mason 安装。新机器须先准备这些资源，并核对 `lua/user/lathe_config.lua` 的资源、Python 和 JDK 路径；只有配置仓库本身不足以完成 Lathe 安装。详见下方 [Java 开发专题](#java-开发专题)。
 
 ---
 
@@ -68,7 +69,7 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 
 ```
 ~/.config/nvim/
-├── init.vim                      # 入口：设置 runtimepath
+├── init.vim                      # 入口：加载 lua/init.lua
 ├── lazy-lock.json               # 插件版本锁定
 ├── lua/
 │   ├── init.lua                 # lazy.nvim 初始化
@@ -80,33 +81,41 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 │       ├── codediff_merge_controls.lua # 块旁箭头、菜单与撤销边界
 │       ├── codediff_merge_finish.lua # 保存、精确暂存与回到审查
 │       ├── codediff_merge_presentation.lua # 来源标记、配色与有限记录
-│       ├── java_backend.lua     # Java 后端选择与本机资源路径
+│       ├── lathe_config.lua     # Lathe 本机资源路径
+│       ├── project.lua          # 原生自动项目根定位
 │       ├── lathe_live.lua       # 多工程准备、实时源码和生命周期
 │       ├── cmp.lua              # 自动补全配置
 │       ├── plugins/
 │       │   ├── init.lua         # 插件汇总入口
-│       │   ├── java.lua         # Java 后端分发入口
-│       │   ├── java_lathe.lua   # Lathe LSP 接入
-│       │   ├── java_jdtls.lua   # JDT LS 独立配置
-│       │   ├── lsp.lua          # LSP 服务器 + Mason
-│       │   ├── search.lua       # fzf-lua + aerial + 书签
+│       │   ├── java.lua         # Lathe 唯一接入入口
+│       │   ├── lsp.lua          # 补全与格式化插件
+│       │   ├── search.lua       # aerial + lspsaga（Picker由Snacks提供）
 │       │   ├── spring.lua       # Spring HTTP 接口搜索
-│       │   ├── dap.lua          # 调试器
-│       │   ├── test.lua         # 测试运行器
 │       │   ├── editing.lua      # Treesitter + 文本对象
 │       │   ├── git.lua          # Git 集成
 │       │   └── ui.lua           # UI 组件
 │       └── lsp/
+│           ├── servers.lua      # 原生语言服务配置（独立工具目录）
 │           ├── handlers.lua     # LSP 通用配置
 │           └── conform.lua      # 格式化器配置
 ├── scripts/
 │   ├── lathe-model.py           # 自动识别 Maven、独立构建和发布模型
-│   └── prewarm-jdtls.sh         # JDT 预热；Lathe 模式自动跳过
 └── docs/
     └── java-dev-guide.md        # Java 开发详细指南
 ```
 
 ---
+
+## Snacks 整合与迁移
+
+当前注册30个插件。Snacks **v2.31.0**（`e6fd58c82f2f3fcddd3fe81703d47d6d48fc7b9f`）取代 fzf-lua、nvim-tree、toggleterm 和 vim-bbye；保留 Aerial、Saga、Flash、Bufferline、Lualine、Which-key。详见 [整合说明](docs/navigation-ui-minimum.md)。仅启用 picker、explorer、terminal，buffer删除按需调用；未启用dashboard、GitHub集成、滚动动画等功能。
+
+公开发行包解压到 `~/.local/share/nvim/lazy/snacks.nvim`，由本地dir加载，无Git remote；该版本由本节固定，不由lazy-lock锁定。新机器应先从[固定commit发行包](https://codeload.github.com/folke/snacks.nvim/tar.gz/e6fd58c82f2f3fcddd3fe81703d47d6d48fc7b9f)安装到此目录。
+
+- `,f` 项目符号、`,F` 全文、`,e` 项目最近文件、`,b` buffer、`gr/gi` 引用与实现均有源码预览。Java `,f`保留已保存类型/方法扫描；字段和未保存覆盖不是本轮新增能力。
+- `gw` 选择当前或最近访问的项目，确认后在同一 Neovide 应用中新建项目窗口；`,p/,P` 打开目录树并定位当前文件，目录用 Enter 折叠。项目树 Git 颜色是工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
+- `st` / Ctrl+反斜杠显隐底部终端，保留会话、尺寸和Esc/jk；`,c/,C`关闭buffer保留窗口布局。关闭未保存buffer会询问，不强制丢弃。
+- Which-key主菜单聚焦搜索、文件、Git、Java、HTTP与Problems；重复的`,S*`和次要LSP别名仍可使用，不在主菜单展示；Merge专用m菜单只在合并上下文出现。
 
 ## 核心功能
 
@@ -116,12 +125,14 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 
 | 快捷键 | 功能 | 说明 |
 |--------|------|------|
-| `gd` | 智能跳转 | 定义处→显示引用，引用处→跳转定义 |
+| `gd` | 智能跳转 | 定义处显示引用，使用处跳转定义。能确认依赖版本及符号的类和实例方法可回退到只读字节码 |
 | `gD` | 跳到声明 | - |
-| `gr` | 查找引用 | 过滤 Maven `.m2` 依赖 |
-| `gi` | 跳到实现 | 接口→实现类 |
+| `gr` | 查找引用 | Java 保留 Lathe 返回的项目、生成源码和依赖结果 |
+| `gi` | 跳到实现 | Java Mapper 调用可直接跳到 XML 语句，其余调用查询实现 |
 | `gu` | 跳到父类/接口 | Java 专属 |
 | `gR` | 调用链 | 来调者树 (lspsaga GUI) |
+
+MyBatis 根据完整 `namespace` 和语句 `id` 匹配。Java Mapper 方法声明与 XML 中的 `select`、`insert`、`update`、`delete` 可用 `gd` 互跳，`Ctrl+o` 回到原位置。可直接打开 Lathe 缓存的依赖源码，在字段名上用 `gr` 或 `gd` 搜索模型中能验证归属的字段引用和 getter/setter 调用。
 
 #### 1.2 搜索体系
 
@@ -131,14 +142,14 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 | `<Leader>F` | 全文内容搜索 | live grep |
 | `<Leader>ha` | Spring HTTP 接口 | 扫描 `@Mapping` 注解 |
 | `<Leader>e` | 最近文件 | - |
-| `<Leader>s` | 文件结构大纲 | aerial |
+| `<Leader>s` | 可搜索的文件结构 | Aerial 数据 + Snacks Picker |
 
 #### 1.3 方法级跳转（Treesitter）
 
 | 快捷键 | 功能 | IDEA 对应 |
 |--------|------|-----------|
 | `J` | 跳到下一个方法 | `Ctrl+Down` |
-| `K` | 跳到上一个方法 | `Ctrl+Up` |
+| `K` | 方法内先跳到当前方法名；在声明行或方法外跳到上一处声明 | `Ctrl+Up` |
 | `f` | AceJump 字符跳转 | AceJump |
 | `F` | AceJump Treesitter 选择 | - |
 
@@ -176,34 +187,7 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 
 > 注意：不自动格式化保存，完全手动控制
 
-### 4. 调试（nvim-dap）
-
-| 快捷键 | 功能 | IDEA |
-|--------|------|------|
-| `bb` | 切换断点 | `F9` |
-| `bc` | 条件断点 | `Ctrl+Shift+F8` |
-| `br` | 继续运行 | `F9` |
-| `bi` | 单步进入 | `F7` |
-| `bn` | 单步跳过 | `F8` |
-| `bp` | 单步返回 | `Shift+F8` |
-| `bf` | 运行到光标 | `Alt+F9` |
-| `be` | 表达式求值 | `Alt+F8` |
-| `bv` | 查看断点面板 | - |
-| `sd` | 切换调试 UI | - |
-
-**远程调试**：`br` → 选择 "Remote Debug (Attach)" → 输入 `host:port`
-
-### 5. 测试运行（neotest）
-
-| 快捷键 | 功能 |
-|--------|------|
-| `zr` | 运行当前文件测试 |
-| `zR` | 运行整个项目测试 |
-| `zd` | 调试最近测试方法 |
-| `zD` | 调试整个项目测试 |
-| `sr` | 切换测试结果面板 |
-
-### 6. Git 集成
+### 4. Git 集成
 
 **gitsigns（行内）**：
 | 快捷键 | 功能 |
@@ -220,16 +204,15 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 | `,gd` | 打开审查；存在未合并文件时进入冲突列表 |
 | `,gB` | Compare with Branch |
 | `,gc` / `q` | 关闭审查，保留未完成/未保存提示 |
-| `Ctrl+d` / `Ctrl+f` | 普通 Diff 下一/上一变更；合并视图下一/上一未解决冲突 |
+| `Ctrl+d` / `Ctrl+f` | Diff/合并视图统一下一/上一变更（包括已处理块），不自动切文件 |
 | `,w` | 最大化当前拆分窗口，再按恢复 |
-| `,gh` / `,gH` | Diffview 文件/项目历史 |
-| `:DiffviewBranchReview` | 按同一比较基准使用 Diffview 回退 |
+| `,gh` / `,gH` | CodeDiff 文件/项目历史 |
 
 合并视图直接按 `m` 打开英文菜单，无需 `,g` 前缀。`ml/mr/ma/mu` 分别接受左侧、右侧、双方和还原祖先；`mz/mZ` 撤销/重做，`mf` 保存当前文件并暂存为已解决，再回该文件普通 Diff。未解决块或残留冲突标记会阻止完成。
 
 安装固定版本、完整键位、来源标记及安全边界见 [Git 审查与合并指南](docs/git-review-guide.md)。
 
-### 7. LSP 功能
+### 5. LSP 功能
 
 | 快捷键 | 功能 | IDEA |
 |--------|------|------|
@@ -244,7 +227,7 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 | `se` | 显示诊断 | - |
 | `<F2>` | 下一个错误 | `F2` |
 
-### 8. 窗口与工具
+### 6. 窗口与工具
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -255,20 +238,16 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 | `sq` | 关闭窗口 |
 | `<Leader>w` | 最大化当前拆分/恢复原布局 |
 | `<Leader><Arrow>` | 调整窗口大小 |
-| `gw` | 切换文件树 |
+| `gw` | 选择已访问的项目，在同一 Neovide 应用中新建窗口 |
+| `<Leader>p` | 打开项目目录树并定位当前文件 |
 | `<Leader>P` | 定位当前文件 |
 | `st` | 打开终端 |
 
-### 9. 书签
+### 7. 书签与跳转记录
 
-| 快捷键 | 功能 | IDEA |
-|--------|------|------|
-| `mm` | 打标/取消书签 | `F11` |
-| `ma` | 查看所有书签 | `Shift+F11` |
-| `gm` | 下一个书签 | `F4` |
-| `gM` | 上一个书签 | `Shift+F4` |
+使用 Vim 原生 marks：`mA` 设置文件标记，`'A` 返回标记行；`Ctrl+o` / `Ctrl+i` 访问跳转记录。已移除失效的 vim-bookmarks/Harpoon 配置，不再声明 `mm`、`gm`、`gM` 为插件书签键。三方合并中的 `ma` 保持 Accept Both。
 
-### 10. 折叠
+### 8. 折叠
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -307,19 +286,6 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
   <Leader>R   重命名
   <Leader>oi  整理导入
 
-【调试】
-  bb   切换断点
-  br   继续运行
-  bi   单步进入
-  bn   单步跳过
-  sd   调试面板
-
-【测试】
-  zr   运行当前文件
-  zR   运行全部
-  zd   调试测试
-  sr   测试结果面板
-
 【Git】
   <Leader>gd  Git diff
   gp   预览 hunk
@@ -328,8 +294,11 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 【窗口】
   gh/j/k/l  窗口导航
   <Leader>w  最大化当前拆分/恢复布局
-  gw   文件树
+  gw   切换项目（同一应用中的新窗口）
+  <Leader>p  项目文件树
 ```
+
+Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用指南](docs/neovide.md)。`H` / `L` 在普通和可视模式下分别移动到当前视觉行的首个非空字符和行尾。
 
 ---
 
@@ -337,13 +306,10 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 
 ### Java
 
-- **LSP**: 默认 Lathe，可切换为 JDT LS；同一配置只加载选中的 Java 后端
-- **调试**: nvim-dap (内置 Java 适配器)
-- **测试**: neotest-java (JUnit 4/5)
+- **LSP**: Lathe，是唯一 Java 语言服务
 - **格式化**: google-java-format
-- **特色功能**: Java 8 分析、Lombok 支持、多模块 Maven；Spring Boot LS 仅在 JDT LS 模式启用
+- **特色功能**: Java 8 分析、Lombok 支持、多模块 Maven；`,ha` 静态搜索 Spring HTTP 注解
 
-Lathe 下的调试、JUnit 运行器与 Spring 专属功能没有在本轮做兼容性验收，不将插件已安装等同于这些能力均已通过验证。
 
 [详细 Java 开发指南 →](./docs/java-dev-guide.md)
 
@@ -351,7 +317,6 @@ Lathe 下的调试、JUnit 运行器与 Spring 专属功能没有在本轮做兼
 
 - **LSP**: pyright
 - **格式化**: black + isort + ruff
-- **调试**: nvim-dap (需手动配置 debugpy)
 
 ### TypeScript / JavaScript / Vue
 
@@ -375,15 +340,9 @@ Lathe 下的调试、JUnit 运行器与 Spring 专属功能没有在本轮做兼
 
 ## Java 开发专题
 
-### 一行切换后端
+### Lathe 参数
 
-编辑 [lua/user/java_backend.lua](lua/user/java_backend.lua)，只改下面一行，然后重启 Neovim：
-
-```lua
-server = "lathe", -- 改成 "jdtls" 即切回 JDT LS
-```
-
-`java.lua` 分发到两个独立实现。Mason 不自动启动第二个 JDT LS；选择 Lathe 时，JDT 预热脚本直接跳过。切换不改项目 POM、全局 `JAVA_HOME` 或 Zed 配置。
+资源与 JVM 参数位于 [lua/user/lathe_config.lua](lua/user/lathe_config.lua)，唯一 Java 接入位于 `lua/user/plugins/java.lua`。不再保留后端切换入口。
 
 ### Maven 自动准备与实时审查
 
@@ -404,49 +363,43 @@ server = "lathe", -- 改成 "jdtls" 即切回 JDT LS
 |------|----------|
 | Lathe 运行时 | JDK 21，默认 JVM 参数 `-Xms256m -Xmx3g` |
 | 独立构建副本 | JDK 8 编译器，保留项目原 Lombok 依赖；显式 `release=8` 只在副本转为等价的 source/target 8 参数 |
-| 编辑器分析模型 | `--release 8`；兼容性处理仅替换分析模型中的旧 Lombok，原项目依赖版本保持不变 |
+| 编辑器分析模型 | `--release 8`。分析用 Lombok 最低为 1.18.38，保留生成方法关联所需的注解标记。原项目继续使用自己的版本 |
 | 原工程 | 不写入 `.lathe`、构建输出或 POM；不自动 `git add` |
 
 ### 安装资源与缓存
 
-本机安装资源由 `java_backend.lua` 的 `lathe.resources` 指定，目前位于 `~/.codex/experiments/lathe-java8-20261116-side`，需保留其中的 `lathe.nvim-0.3.1`、`extension-classpath.txt` 和 `vim-trial/m2`。这些资源不包含在配置提交中；分析脚本使用的 Maven/JDK 8 路径见 `scripts/lathe-model.py`。该模式当前面向 Maven Java 8，其他构建系统可切换 JDT LS。
+本机安装资源由 `lathe_config.lua` 的 `resources` 指定，目前位于 `~/.codex/experiments/lathe-java8-20261116-side`，需保留其中的 `lathe.nvim-0.3.1`、`extension-classpath.txt` 和 `vim-trial/m2`。这些资源不包含在配置提交中；分析脚本使用的 Maven/JDK 8 路径见 `scripts/lathe-model.py`。本机自动模型准备当前面向 Maven Java 8；不能将其视为所有构建系统均已验证。
 
 | 数据 | 默认位置 |
 |------|----------|
 | 每工程状态、日志、模型和索引缓存 | `~/.local/state/nvim/lathe/projects/<工程路径哈希>/` |
 | Git 工程的独立构建 worktree | `~/.codex/worktrees/lathe-<工程路径哈希>/<仓库名>/` |
 | 非 Git 工程的构建副本 | 对应状态目录下的 `build/` |
-| 独立 Maven 制品缓存 | `lathe.resources` 下的 `vim-trial/m2/`，多个工程复用；原 `~/.m2` 只读取 |
-| JDT LS 缓存（macOS） | `~/Library/Caches/jdtls/nvim-<工程路径哈希>/`，可复用身份匹配的历史缓存 |
+| 独立 Maven 制品缓存 | `resources` 下的 `vim-trial/m2/`，多个工程复用；原 `~/.m2` 只读取 |
 
 后台准备退出时只收尾本次任务的子进程；已完成的模型和缓存保留供下次复用。
 
 ### 状态与维护入口
 
-| 入口 | Lathe | JDT LS |
-|------|-------|--------|
-| 状态栏 | 区分等待、准备模型、失败、模型已准备和客户端连接状态 | 区分服务就绪与真实构建任务；ServiceReady 不代表所有语义查询已完成 |
-| `,jr` | 刷新当前工程模型；打开 Java 文件后可重试首次准备失败 | 更新当前项目配置 |
-| `,jR` | 在独立构建副本执行 clean 后重新准备 | 重建当前工程的专用 workspace |
-| `:LatheLog` | 查看当前或最近失败工程的准备日志 | 不适用 |
-| `:LatheSync` | 手动提交模型刷新请求 | 不适用 |
+| 入口 | Lathe |
+|---|---|
+| 状态栏 | 等待、准备模型、失败、模型已准备和客户端连接状态 |
+| `,lr` | 刷新当前工程模型，首次准备失败后可重试 |
+| `,lR` | 在独立构建副本 clean 后重新准备 |
+| `:LatheLog` | 准备日志 |
+| `:LatheSync` | 手动刷新 |
+
+索引没有跨语言统一的 LSP 重建协议；上述模型维护动作针对 Lathe。通用导航、引用、重构和补全映射统一定义在 `lsp/handlers.lua`、`plugins/search.lua` 与 `cmp.lua`，不在语言服务配置中重复绑定。
 
 ### 本轮验证（2026-11-16）
 
-已验证目录自动准备、多模块和嵌套工程识别、两个工程同名符号的跳转隔离、缓存复用、POM 自动刷新、缺依赖后的重试、Java 8 API 限制、退出时进程收尾，以及真实工程的 `gd` 和 `,f` 源码预览。JDT LS 切换后完成了服务就绪和文件符号查询检查。核对过原工程 POM、Git 状态及暂存区，保持不变；没有运行业务回归测试。
+已验证目录自动准备、多模块和嵌套工程识别、两个工程同名符号的跳转隔离、缓存复用、POM 自动刷新、缺依赖后的重试、Java 8 API 限制、退出时进程收尾，以及真实工程的 `gd` 和 `,f` 源码预览。核对过原工程 POM、Git 状态及暂存区，保持不变；没有运行业务回归测试。
 
-### Spring Boot 支持
+### 独立安装与语言服务管理
 
-可选安装 Spring Boot Language Server：
+本配置已移除 Mason 和后端切换逻辑。其他语言服务放在 `~/.local/share/nvim/language-tools/`，由 `lua/user/lsp/servers.lua` 通过原生 `vim.lsp.config` / `vim.lsp.enable` 按文件类型启动。安装、更新、版本固定和添加服务见 [语言工具安装](docs/language-tools.md)。
 
-```bash
-bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
-```
-
-提供：
-- Bean 定义导航
-- `@RequestMapping` 补全
-- `application.yml/properties` 智能提示
+Spring HTTP 路径仍可用 `,ha` 静态搜索；没有宣称 Bean 专用语义导航已接入。
 
 ---
 
@@ -458,7 +411,6 @@ bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
 :checkhealth          " 环境健康检查
 :LspInfo             " LSP 客户端状态
 :LspLog              " LSP 日志
-:Mason               " 管理 LSP 工具
 :Lazy                " 插件管理
 ```
 
@@ -467,21 +419,15 @@ bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
 **Q: Lathe 提示准备失败**
 - 执行 `:LatheLog`，核对 Maven 缺依赖、编译错误及本机资源路径。
 - 在原工程按正常研发流程准备缺失依赖；分析任务保持离线，不自动修改原 POM。
-- 保存 POM 或补齐已监测的本地依赖后自动重试，也可打开 Java 文件后按 `,jr`。
+- 保存 POM 或补齐已监测的本地依赖后自动重试，也可打开 Java 文件后按 `,lr`。
 - 第一次准备尚未完成时，符号搜索可以使用，语义跳转需等待模型和服务就绪。
 
-**Q: 切到 jdtls 后显示 `✗` 未连接**
-- 确认当前文件是 `.java`
-- 确认项目根有 `pom.xml` 或 `build.gradle`
-- 检查 Java 21: `/usr/libexec/java_home -v 21`
-- 检查 jdtls 安装: `:Mason`
-
 **Q: `gd` 跳转没反应**
-- 先在 `:LspInfo` 确认当前缓冲区连接的是所选后端。
-- Lathe 先检查模型准备状态和 `:LatheLog`；JDT LS 检查服务和构建状态。
+- 先在 `:LspInfo` 确认当前 Java 缓冲区连接的是 Lathe。
+- 检查模型准备状态和 `:LatheLog`。
 
 **Q: 格式化不生效**
-- 确认格式化器已安装: `:Mason`
+- 确认工具在 PATH 中可执行，或按独立工具安装说明安装
 - 手动触发: `=`
 - 检查 conform 配置: `:ConformInfo`
 
@@ -493,7 +439,6 @@ bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
 
 ```vim
 :Lazy update          " 更新插件
-:MasonUpdate          " 更新 Mason 工具
 :TSUpdate             " 更新 Treesitter 解析器
 ```
 
@@ -503,11 +448,11 @@ bash ~/.config/nvim/scripts/install-spring-boot-ls.sh
 
 ### 添加新 LSP 服务器
 
-编辑 `lua/user/plugins/lsp.lua`：
+编辑 `lua/user/lsp/servers.lua`，安装工具后填写其独立目录的绝对启动路径；沿用 `handlers.on_attach` 与 `handlers.capabilities`：
 
 ```lua
 vim.lsp.config("myserver", {
-  cmd = { mason_bin .. "/myserver", "--stdio" },
+  cmd = { "/path/to/myserver", "--stdio" },
   filetypes = { "myfiletype" },
   root_markers = { ".git", "config.json" },
   on_attach = handlers.on_attach,
@@ -540,5 +485,5 @@ vim.keymap.set("n", "<Leader>x", ":MyCommand<CR>", { noremap = true, silent = tr
 
 - [Java 开发详细指南](./docs/java-dev-guide.md)
 - [lazy.nvim 文档](https://github.com/folke/lazy.nvim)
-- [nvim-jdtls 文档](https://github.com/mfussenegger/nvim-jdtls)
-- [fzf-lua 文档](https://github.com/ibhagwan/fzf-lua)
+- [Lathe Neovim 文档](https://github.com/ag-libs/lathe/blob/main/docs/guide/editors/neovim.md)
+- [Snacks 文档](https://github.com/folke/snacks.nvim/tree/v2.31.0/docs)

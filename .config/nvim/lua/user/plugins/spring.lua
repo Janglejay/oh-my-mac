@@ -2,12 +2,6 @@
 -- 快捷键: <Leader>ha（对应 IntelliJ Cool Request）
 
 local function spring_endpoints()
-  local ok, fzf = pcall(require, "fzf-lua")
-  if not ok then
-    vim.notify("fzf-lua 未加载，请先执行 :Lazy sync", vim.log.levels.ERROR)
-    return
-  end
-
   local project_root = (function()
     local path = vim.fs.root(0, { "pom.xml", "build.gradle", "mvnw", "gradlew" })
               or vim.fn.getcwd()
@@ -167,27 +161,16 @@ local function spring_endpoints()
     return
   end
 
-  fzf.fzf_exec(entries, {
-    prompt  = "Spring Endpoints❯ ",
-    winopts = { title = " 🌿 Spring 接口 ", height = 0.6, width = 0.85 },
-    actions = {
-      ["default"] = function(selected)
-        if not selected or not selected[1] then return end
-        local info = entry_map[selected[1]]
-        if info and info.file then
-          vim.cmd("edit " .. vim.fn.fnameescape(info.file))
-          vim.api.nvim_win_set_cursor(0, { info.lnum, 0 })
-          vim.cmd("normal! zz")
-        end
-      end,
-    },
-  })
+  local items = {}
+  for _, display in ipairs(entries) do
+    local info = entry_map[display]
+    items[#items + 1] = { text = display, file = info.file, pos = { info.lnum, 0 } }
+  end
+  return require("user.navigation").items("Spring Endpoints", items)
 end
 
 vim.keymap.set("n", "<Leader>ha", spring_endpoints, {
-  noremap = true,
-  silent  = true,
-  desc    = "Spring Endpoints (Cool Request)",
+  noremap = true, silent = true, desc = "Spring Endpoints",
 })
 
 return {}
