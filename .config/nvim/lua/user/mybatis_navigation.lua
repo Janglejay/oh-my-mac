@@ -170,6 +170,7 @@ local syntax = {
   parse = parse, text = text, first = first, tag = tag, attribute = attribute,
   mapper = mapper, contents = contents, target = target, origin = origin,
 }
+M.xml_syntax = { parse = parse, text = text, first = first, tag = tag, attribute = attribute, contents = contents }
 
 function M.java_references(fallback)
   local buf = vim.api.nvim_get_current_buf()

@@ -42,5 +42,6 @@ end
 
 require("user.project").setup()
 require("user.mybatis_navigation").setup()
+require("user.spring_navigation").setup()
 require("user.lsp.servers")
 require("user.lathe_live").setup()

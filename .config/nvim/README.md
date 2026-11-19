@@ -136,7 +136,15 @@ MyBatis 根据完整 `namespace` 和语句 `id` 匹配。Java Mapper 方法声�
 
 Mapper XML 中，`gd` 可跳到 `resultMap`、`extends` 和 `include refid` 对应定义。对能解析出 Java 类型的映射属性、`@Param` 参数、`foreach` 元素和 OGNL 属性也可跳到 Java 声明。复用片段根据调用它的语句解析参数类型。光标处的 `gr` 可反查对应 XML，Java 属性声明上的 `gr` 同时查询语言服务。依赖动态键或无法确认类型的表达式会提示无法静态定位。
 
-Spring Tools 使用自己的 classpath 回调协议。隔离验证将 Maven 实际生成的 Lathe 源码根、编译 classpath 和 JDK 系统库转换后传入 Spring Tools，成功识别了样例的 Bean 符号。日常 Spring HTTP 搜索仍用 `,ha`，配置中未启用实验用的转换层。
+Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 捕获的 Maven 模块、源码根、编译 classpath 和项目 JDK。Lathe 继续提供 Java 定义与引用，Spring Tools 提供 Bean 符号。macOS 上 Spring 服务在本地网络隔离中运行。
+
+- 在构造器、`@Autowired`、`@Resource` 或 `@Bean` 参数的注入点按 `gd` 跳到 Bean。Lombok 隐式构造器的注入点显示在对应字段上。构造器选取遵循可静态确认的签名和 `onConstructor`，只在 `lombok.config` 声明复制 `@Qualifier` 时把字段限定符用于生成的参数。
+- 在 Spring XML 的 `ref`、`depends-on`、`parent`、`factory-bean` 或别名上按 `gd` 跳到 Bean，从 `class` 跳到工程里的 Java 声明。XML 范围由 Lathe 捕获的 Maven 资源根决定。
+- 在 Bean 类名、工厂方法名、XML `id` 或注册名称上按 `gr` 反查能唯一确认的注入点和配置引用。有多个静态候选时，`gd` 会打开候选列表。测试路径排在最后。
+- `:SpringProfiles dev` 或 `:SpringProfiles dev,local` 为当前工程选择导航用的 Profile。`:SpringProfiles` 查看当前选择，`:SpringProfiles!` 恢复 `SPRING_PROFILES_ACTIVE` 或 Spring 的 `default`。支持字符串 `@Profile` 及 `!`、`&`、`|` 组合。Profile 在当前 Neovim 会话生效。
+- 程序化配置支持类字面量 `@Import`、Spring 回调里的固定名称 `registerSingleton` 和 `registerBeanDefinition`，以及同一方法内可追踪的独立 Spring 容器的 `registerBean`、`registerAlias` 和 `getBean`。动态 Bean 名、外部配置值及需执行分支或自定义工厂才能确定的目标仍需运行时信息。
+
+本机依赖 [Spring Boot Tools](https://marketplace.visualstudio.com/items?itemName=vmware.vscode-spring-boot) 2.4.1。下载对应 VSIX 后，将包内 `extension/language-server/` 的内容（含 `lib/`）放到 `stdpath('data') .. '/spring-tools/2.4.1'`，默认路径为 `~/.local/share/nvim/spring-tools/2.4.1/`。首次 Bean 查询需等待各模块完成索引。
 
 #### 1.2 搜索体系
 
@@ -310,7 +318,7 @@ Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用
 
 ### Java
 
-- **LSP**: Lathe，是唯一 Java 语言服务
+- **LSP**: Lathe 提供 Java 语言服务，Spring Tools 复用其工程模型提供 Bean 索引
 - **格式化**: google-java-format
 - **特色功能**: Java 8 分析、Lombok 支持、多模块 Maven；`,ha` 静态搜索 Spring HTTP 注解
 
@@ -403,7 +411,7 @@ Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用
 
 本配置已移除 Mason 和后端切换逻辑。其他语言服务放在 `~/.local/share/nvim/language-tools/`，由 `lua/user/lsp/servers.lua` 通过原生 `vim.lsp.config` / `vim.lsp.enable` 按文件类型启动。安装、更新、版本固定和添加服务见 [语言工具安装](docs/language-tools.md)。
 
-Spring HTTP 路径仍可用 `,ha` 静态搜索；没有宣称 Bean 专用语义导航已接入。
+`,ha` 静态搜索 Spring HTTP 路径。Bean 定义和注入关系通过 `gd`、`gr` 查询，支持范围见[代码导航](#11-定义与引用)。
 
 ---
 

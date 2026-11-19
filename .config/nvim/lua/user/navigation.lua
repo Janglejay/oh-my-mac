@@ -151,8 +151,11 @@ function M.references()
         auto_confirm = false, jump = { reuse_win = false },
       }))
     end
-    if require("user.mybatis_navigation").java_references(picker) then return end
-    return picker()
+    local function java_references()
+      if not require("user.mybatis_navigation").java_references(picker) then return picker() end
+    end
+    if require("user.spring_navigation").run(false, java_references) then return end
+    return java_references()
   end
   return Snacks.picker.lsp_references(vim.tbl_deep_extend("force", usage_order, {
     title = "Find Usages · 测试路径排最后 · 删除 !.m2 可包含依赖", pattern = "!.m2",

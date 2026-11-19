@@ -99,7 +99,7 @@ Terminal session management:
 可选图形界面：[Neovide 启动、外观与验收说明](.config/nvim/docs/neovide.md)，沿用现有 Neovim 和快捷键。
 **Architecture**: Modular Lua configuration
 
-Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分析模型，直接读取原工程最新源码，每工程缓存和构建副本独立；原 POM 和 Lombok 版本保持不变。Java 只使用 Lathe，已移除 JDT LS、后端切换及预热脚本。
+Java 审查默认使用 Lathe 0.3.1。打开 Maven 工程时自动准备 Java 8 分析模型，直接读取原工程最新源码，各工程的缓存与构建副本独立。Spring Tools 复用该模型提供 Bean 导航，通过 `gd` 和 `gr` 查询 Java 注入、XML Bean、Lombok 生成的构造器参数和可静态确认的程序化注册。
 
 安装前置、缓存位置、失败重试与已验证范围见 [Neovim 配置说明](.config/nvim/README.md#java-开发专题)。配置提交不包含本机 Lathe 安装资源或 Maven 制品缓存。
 
@@ -115,7 +115,7 @@ Java 审查默认使用 Lathe 0.3.1：打开 Maven 工程自动准备 Java 8 分
 |----------|---------|---------|
 | **Core** | `options.lua`, `keymaps.lua`, `autocommands.lua` | Editor fundamentals |
 | **Plugin Management** | `plugins/init.lua` | lazy.nvim plugin declarations |
-| **Java** | `lathe_config.lua`, `lathe_live.lua`, `plugins/java.lua` | Lathe integration and isolated Maven models |
+| **Java** | `lathe_config.lua`, `lathe_live.lua`, `plugins/java.lua`, `spring_navigation.lua` | Lathe project models and Spring Bean navigation |
 | **LSP** | `plugins/lsp.lua`, `lsp/handlers.lua` | Language servers |
 | **Completion** | `cmp.lua` | nvim-cmp with multiple sources |
 | **UI** | `lualine.lua`, `bufferline.lua`, `whichkey.lua` | Visual interface |

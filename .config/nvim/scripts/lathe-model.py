@@ -322,7 +322,9 @@ def missing_dependencies(log):
         suffix = 'pom' if kind == 'pom' else 'jar'
         if group.startswith(('http', 'https')):
             continue
-        found.add(str(Path.home() / '.m2/repository' / group.replace('.', '/') / artifact / version / f'{artifact}-{version}.{suffix}'))
+        relative = Path(group.replace('.', '/')) / artifact / version / f'{artifact}-{version}.{suffix}'
+        found.add(str(Path.home() / '.m2/repository' / relative))
+        found.add(str(SHARED_REPO / relative))
     return found
 
 
@@ -625,6 +627,9 @@ def prepare(info, args):
     except BaseException as error:
         result.update(status='failed', error=str(error), model_ready=(LIVE / '.lathe/workspace.json').is_file())
         text = log.read_text() if log.exists() else ''
+        first_missing = re.search(r'^\[ERROR\]\s+dependency: [\w.-]+:([\w.-]+):(?:jar|pom):([\w.+-]+)', text, re.M)
+        if first_missing:
+            result['missing_dependency'] = ':'.join(first_missing.groups())
         paths = sorted(set(initial_watch) | missing_dependencies(text))
         result.update(watch=paths, watch_values=[initial_stats.get(p, file_stat(p)) for p in paths])
         if isinstance(error, (SystemExit, KeyboardInterrupt)):
@@ -658,7 +663,7 @@ def main():
             state_file = Path(info['state']) / 'state.json'
             if state_file.exists():
                 state = json.loads(state_file.read_text())
-                for key in ('status', 'watch', 'watch_values', 'error', 'log'):
+                for key in ('status', 'watch', 'watch_values', 'error', 'log', 'missing_dependency'):
                     if key in state:
                         info[key] = state[key]
             print(json.dumps(info, ensure_ascii=False)); return 0

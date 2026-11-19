@@ -200,7 +200,9 @@ local function lsp_keymaps(bufnr)
     end)
   end
   vim.keymap.set("n", "gd", function()
-    if not require("user.mybatis_navigation").jump_from_java(smart_goto) then smart_goto() end
+    if require("user.mybatis_navigation").jump_from_java(smart_goto) then return end
+    if require("user.spring_navigation").run(true, smart_goto) then return end
+    smart_goto()
   end, vim.tbl_extend("force", o, { desc = "gd: smart goto" }))
 
   -- 其他 LSP 快捷键

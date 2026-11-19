@@ -45,6 +45,7 @@ local function signature(ctx)
 end
 local function update(ctx, data)
   if not data then return end
+  if data.status then ctx.missing_dependency = data.missing_dependency end
   for _, key in ipairs({ "watch", "watch_values", "status", "error", "log" }) do
     if data[key] ~= nil then ctx[key] = data[key] end
   end
@@ -189,7 +190,8 @@ local function ensure_path(name, buf, callback)
     if not ctx then
       ctx = data; M.contexts[ctx.id] = ctx; by_analysis[ctx.analysis] = ctx
       ctx.waiters = {}; update(ctx, data)
-      if ctx.ready then update(ctx, read_json(ctx.analysis .. "/live-state.json")); ctx.status = "ready" end
+      ctx.waiting = ctx.status == "preparing"
+      if ctx.ready and not ctx.status then update(ctx, read_json(ctx.analysis .. "/live-state.json")); ctx.status = "ready" end
     end
     by_pom[root] = ctx; last_context = ctx
     for b, cb in pairs(waiters or {}) do
@@ -240,7 +242,11 @@ function M.status()
   local name = vim.fs.basename(ctx.source)
   if ctx.status == "preparing" then return "busy", "Lathe 准备模型 · " .. name end
   if ctx.status == "queued" or ctx.waiting then return "busy", "Lathe 等待准备 · " .. name end
-  if ctx.status == "failed" then return "error", "Lathe 准备失败 · " .. name .. " · ,lr 重试" end
+  if ctx.status == "failed" then
+    local state = ctx.ready and "更新失败（旧模型）" or "准备失败"
+    local subject = ctx.missing_dependency or name
+    return "error", "Lathe " .. state .. " · " .. subject .. " · ,lr 重试"
+  end
   local cs = vim.lsp.get_clients({ name = "lathe" })
   for _, c in ipairs(cs) do
     if c.config.root_dir == ctx.analysis then return c.initialized and "ready" or "busy", "Lathe · Java 8 · " .. name end
@@ -279,6 +285,8 @@ function M.tick()
 end
 function M.stop()
   stopped = true; queue = {}
+  local spring = package.loaded["user.spring_tools"]
+  if spring then spring.stop_all() end
   if timer then timer:stop(); timer:close(); timer = nil end
   if active and active.job then active.job:kill(15); active.job:wait(5000) end
   for _, job in pairs(inspection_jobs) do job:kill(15); job:wait(1000) end
@@ -297,7 +305,9 @@ function M.setup()
     end)
   end })
   vim.api.nvim_create_autocmd("DirChanged", { group = group, callback = function() M.ensure_directory(vim.fn.getcwd()) end })
-  vim.api.nvim_create_autocmd({ "BufUnload", "BufWipeout" }, { group = group, callback = function()
+  vim.api.nvim_create_autocmd({ "BufUnload", "BufWipeout" }, { group = group, callback = function(ev)
+    local spring = package.loaded["user.spring_tools"]
+    if spring then spring.close_document(ev.buf) end
     vim.schedule(function()
       if stopped then return end
       for _, ctx in pairs(M.contexts) do
@@ -308,6 +318,7 @@ function M.setup()
         ctx.dormant = not live
         if not live then
           for _, c in ipairs(vim.lsp.get_clients({ name = "lathe" })) do if c.config.root_dir == ctx.analysis then c:stop() end end
+          if spring then spring.stop(ctx) end
         end
       end
     end)
