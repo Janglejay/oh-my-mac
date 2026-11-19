@@ -68,23 +68,33 @@ local function read(state, path)
   return data
 end
 
-local function discover(model, callback)
+local function discover(model, callback, registrations_only)
   local files, jobs = {}, 2
   local function find(args, roots)
     local paths = vim.tbl_keys(roots)
     if #paths == 0 then jobs = jobs - 1; if jobs == 0 then callback(files) end; return end
     vim.list_extend(args, paths)
-    vim.system(args, { text = true }, vim.schedule_wrap(function(result)
+    vim.system(args, { text = true, timeout = 7000 }, vim.schedule_wrap(function(result)
       for _, file in ipairs(vim.split(result.stdout or "", "\0", { trimempty = true })) do files[file] = true end
       jobs = jobs - 1
       if jobs == 0 then callback(files) end
     end))
   end
   if vim.fn.executable("rg") ~= 1 then callback(files); return end
+  if registrations_only then
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      local file = vim.api.nvim_buf_get_name(buf)
+      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified
+          and (vim.endswith(file, ".xml") or vim.endswith(file, ".java")) and bridge.module(model, file) then
+        files[file] = true
+      end
+    end
+  end
   find({ "rg", "--files-with-matches", "--null", "--no-ignore", "-g", "*.xml", "--", "springframework\\.org/schema/beans" }, model.resource_roots)
+  local annotations = registrations_only and "Import" or "Import|Component|Service|Repository|Controller|RestController|Configuration|SpringBootApplication"
+  local calls = registrations_only and "" or "registerSingleton|registerBeanDefinition|registerAlias|\\b(?:registerBean|getBean)\\s*\\(|"
   find({ "rg", "--files-with-matches", "--null", "--no-ignore", "-g", "*.java", "--",
-    "registerSingleton|registerBeanDefinition|registerAlias|\\b(?:registerBean|getBean)\\s*\\(|"
-      .. "@(?:[\\w.]+\\.)?(?:Import|Component|Service|Repository|Controller|RestController|Configuration|SpringBootApplication)\\b" },
+    calls .. "@(?:[\\w.]+\\.)?(?:" .. annotations .. ")\\b" },
     model.java_roots)
 end
 
@@ -368,44 +378,64 @@ function M.run(go, fallback)
   if not at then return false end
 
   local request = {}
+  local searching
   requests[buf] = request
   local function pending() return requests[buf] == request and matches() end
   local function complete()
     if not pending() then return false end
     requests[buf] = nil
-    vim.api.nvim_echo({ { "" } }, false, {})
+    if searching then vim.api.nvim_echo({ { "" } }, false, {}) end
     return true
   end
-  vim.api.nvim_echo({ { "  Spring Tools: 正在查询 Bean…", "Comment" } }, false, {})
-  vim.defer_fn(function()
-    if complete() then
-      vim.notify("Spring Tools 索引仍未就绪，可稍后重试", vim.log.levels.WARN)
-      fallback()
-    end
-  end, 90000)
-  bridge.ready(ctx, function(err, state)
+  local function query_beans()
     if not pending() then return end
-    if err then
-      if complete() then vim.notify(err, vim.log.levels.WARN); fallback() end
-      return
-    end
-    bridge.document(state, buf)
-    local function query()
+    searching = true
+    vim.api.nvim_echo({ { "  Spring Tools: 正在查询 Bean…", "Comment" } }, false, {})
+    vim.defer_fn(function()
+      if complete() then
+        vim.notify("Spring Tools 索引仍未就绪，可稍后重试", vim.log.levels.WARN)
+        fallback()
+      end
+    end, 90000)
+    bridge.ready(ctx, function(err, state)
       if not pending() then return end
-      if not bridge.index_ready(state) then vim.defer_fn(query, 400); return end
-      state.rpc.request("workspace/symbol", { query = "@+" }, vim.schedule_wrap(function(error, symbols)
+      if err then
+        if complete() then vim.notify(err, vim.log.levels.WARN); fallback() end
+        return
+      end
+      bridge.document(state, buf)
+      local function query()
         if not pending() then return end
-        if error then
-          if complete() then vim.notify(error.message, vim.log.levels.WARN); fallback() end
-          return
-        end
-        discover(state.model, function(files)
-          if complete() then navigate(state, symbols or {}, files, at, active_profiles(ctx), go, fallback) end
-        end)
-      end))
-    end
-    query()
-  end)
+        if not bridge.index_ready(state) then vim.defer_fn(query, 400); return end
+        state.rpc.request("workspace/symbol", { query = "@+" }, vim.schedule_wrap(function(error, symbols)
+          if not pending() then return end
+          if error then
+            if complete() then vim.notify(error.message, vim.log.levels.WARN); fallback() end
+            return
+          end
+          discover(state.model, function(files)
+            if complete() then navigate(state, symbols or {}, files, at, active_profiles(ctx), go, fallback) end
+          end)
+        end))
+      end
+      query()
+    end)
+  end
+  if not at.owner then
+    query_beans()
+  else
+    -- Lombok can generate constructors in ordinary Java classes. Check XML and
+    -- @Import registrations before claiming such a field as a Spring injection.
+    local model = bridge.model(ctx)
+    if not model then requests[buf] = nil; return false end
+    discover(model, function(files)
+      if not pending() then return end
+      local dataset = collect({ model = model }, {}, file, files)
+      activate(dataset, active_profiles(ctx))
+      if dataset.owners[at.owner] then query_beans()
+      elseif complete() then fallback() end
+    end, true)
+  end
   return true
 end
 

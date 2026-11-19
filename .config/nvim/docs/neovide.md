@@ -6,6 +6,8 @@ Neovide 0.17.2 作为现有 Neovim 的可选图形界面，使用 `/opt/homebrew
 
 运行 `neovide --reuse-instance /absolute/path/to/project`，或从 Applications 打开 Neovide。命令链接为 `/opt/homebrew/bin/neovide`，应用位于 `/Applications/Neovide.app`。如果希望省略复用参数，可在 `~/.zshrc` 添加 `alias neovide='neovide --reuse-instance'`，然后在现有终端运行 `source ~/.zshrc`。启用 `fork = true` 后，终端会在启动后返回。
 
+无参数启动到空窗口时，Neovide 先切换到最近项目的根目录，再打开该项目最近访问的文件。目录树和项目搜索使用这个项目范围。首次没有项目文件历史时，会尝试打开启动目录所属项目里的文件。
+
 ### 打开文件和项目
 
 Neovide 没有另一套项目模型；“打开项目”就是切换 Neovim 的当前目录，再从该目录选择文件。因此 Java 模型会在打开该项目的 Java 文件时按现有 Lathe 生命周期准备。
@@ -14,7 +16,7 @@ Neovide 没有另一套项目模型；“打开项目”就是切换 Neovim 的�
 | --- | --- | --- |
 | 新建文件 | `Cmd+N` | 新建未命名 Neovim buffer；`Cmd+S` 时按现有 Save As 流程命名。 |
 | 打开当前项目文件 | `Cmd+O` 或 `Cmd+P` | 在当前项目根目录打开模糊文件选择。 |
-| 切换到已知项目 | `gw` | 从当前和最近打开文件识别项目根；确认后在同一个 Neovide 应用中新建项目窗口。 |
+| 切换到已知项目 | `gw` | 在同一个 Neovide 应用中新建窗口，优先打开所选项目最近访问的文件。没有访问记录时尝试 README、构建文件或项目里的文本文件。 |
 | 打开任意项目目录 | `Cmd+Shift+O` | 输入或粘贴项目目录；目录存在后在当前窗口切换 cwd，并立即显示该项目的文件选择。 |
 | 当前项目目录树 | `,p` | 在当前窗口显示/定位 Snacks Explorer。 |
 | 命令面板 | `Cmd+Shift+P` | 搜索并执行 Neovim 命令。 |

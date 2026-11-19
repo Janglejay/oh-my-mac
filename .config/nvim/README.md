@@ -113,7 +113,7 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 公开发行包解压到 `~/.local/share/nvim/lazy/snacks.nvim`，由本地dir加载，无Git remote；该版本由本节固定，不由lazy-lock锁定。新机器应先从[固定commit发行包](https://codeload.github.com/folke/snacks.nvim/tar.gz/e6fd58c82f2f3fcddd3fe81703d47d6d48fc7b9f)安装到此目录。
 
 - `,f` 项目符号、`,F` 全文、`,e` 项目最近文件、`,b` buffer、`gr/gi` 引用与实现均有源码预览。Java `,f`保留已保存类型/方法扫描；字段和未保存覆盖不是本轮新增能力。
-- `gw` 选择当前或最近访问的项目，确认后在同一 Neovide 应用中新建项目窗口；`,p/,P` 打开目录树并定位当前文件，目录用 Enter 折叠。项目树 Git 颜色是工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
+- Neovide 无参数启动时恢复最近项目的根目录和文件。`gw` 在同一应用里进入所选项目的新窗口，优先打开该项目最近访问的文件。`,p` / `,P` 打开目录树并定位当前文件。项目树 Git 颜色显示工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
 - `st` / Ctrl+反斜杠显隐底部终端，保留会话、尺寸和Esc/jk；`,c/,C`关闭buffer保留窗口布局。关闭未保存buffer会询问，不强制丢弃。
 - Which-key主菜单聚焦搜索、文件、Git、Java、HTTP与Problems；重复的`,S*`和次要LSP别名仍可使用，不在主菜单展示；Merge专用m菜单只在合并上下文出现。
 
@@ -136,6 +136,8 @@ MyBatis 根据完整 `namespace` 和语句 `id` 匹配。Java Mapper 方法声�
 
 Mapper XML 中，`gd` 可跳到 `resultMap`、`extends` 和 `include refid` 对应定义。对能解析出 Java 类型的映射属性、`@Param` 参数、`foreach` 元素和 OGNL 属性也可跳到 Java 声明。复用片段根据调用它的语句解析参数类型。光标处的 `gr` 可反查对应 XML，Java 属性声明上的 `gr` 同时查询语言服务。依赖动态键或无法确认类型的表达式会提示无法静态定位。
 
+在普通 Java DTO 的字段声明上按 `gd` 或 `gr`，可查看普通引用及能静态确认的 Lombok 构造器实参。选中结果会定位到对应参数。Spring 导航先核对 Bean 注册，再处理普通类上的构造器注入候选。
+
 Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 捕获的 Maven 模块、源码根、编译 classpath 和项目 JDK。Lathe 继续提供 Java 定义与引用，Spring Tools 提供 Bean 符号。macOS 上 Spring 服务在本地网络隔离中运行。
 
 - 在构造器、`@Autowired`、`@Resource` 或 `@Bean` 参数的注入点按 `gd` 跳到 Bean。Lombok 隐式构造器的注入点显示在对应字段上。构造器选取遵循可静态确认的签名和 `onConstructor`，只在 `lombok.config` 声明复制 `@Qualifier` 时把字段限定符用于生成的参数。
@@ -150,7 +152,7 @@ Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 
 
 | 快捷键 | 用途 | 实现方式 |
 |--------|------|----------|
-| `<Leader>f` | 搜项目符号或文件 | 输入框默认带 `scope:!test`，删除它可在本次搜索中包含测试路径 |
+| `<Leader>f` | 搜项目符号或文件 | `scope:!test` 后已预留空格，可直接输入。删除该筛选词可在本次搜索中包含测试路径 |
 | `<Leader>F` | 全文内容搜索 | live grep |
 | `<Leader>ha` | Spring HTTP 接口 | 扫描 `@Mapping` 注解 |
 | `<Leader>e` | 最近文件 | - |
@@ -250,7 +252,7 @@ Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 
 | `sq` | 关闭窗口 |
 | `<Leader>w` | 最大化当前拆分/恢复原布局 |
 | `<Leader><Arrow>` | 调整窗口大小 |
-| `gw` | 选择已访问的项目，在同一 Neovide 应用中新建窗口 |
+| `gw` | 在同一 Neovide 应用中新建项目窗口并打开所选项目的最近文件 |
 | `<Leader>p` | 打开项目目录树并定位当前文件 |
 | `<Leader>P` | 定位当前文件 |
 | `st` | 打开终端 |

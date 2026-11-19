@@ -96,10 +96,12 @@ Terminal session management:
 
 #### Neovim (Primary Editor)
 
-可选图形界面：[Neovide 启动、外观与验收说明](.config/nvim/docs/neovide.md)，沿用现有 Neovim 和快捷键。
+Neovide 无参数启动时会进入最近访问的项目根目录并恢复最近文件。`gw` 在同一应用中新建所选项目窗口，目录树和搜索使用该项目范围。[Neovide 使用指南](.config/nvim/docs/neovide.md)
 **Architecture**: Modular Lua configuration
 
 Java 审查默认使用 Lathe 0.3.1。打开 Maven 工程时自动准备 Java 8 分析模型，直接读取原工程最新源码，各工程的缓存与构建副本独立。Spring Tools 复用该模型提供 Bean 导航，通过 `gd` 和 `gr` 查询 Java 注入、XML Bean、Lombok 生成的构造器参数和可静态确认的程序化注册。
+
+普通 Java DTO 的字段声明可用 `gd` 或 `gr` 查用法。结果包含能静态确认的 Lombok 构造器对应实参。
 
 安装前置、缓存位置、失败重试与已验证范围见 [Neovim 配置说明](.config/nvim/README.md#java-开发专题)。配置提交不包含本机 Lathe 安装资源或 Maven 制品缓存。
 
@@ -131,7 +133,7 @@ Java 审查默认使用 Lathe 0.3.1。打开 Maven 工程时自动准备 Java 8 
 |------|-----|--------|
 | Normal | `<leader>e` | Recent files in the current project |
 | Normal | `<leader>p` | Find current file in tree |
-| Normal | `<leader>f` | Project symbols or files with source preview. Remove `scope:!test` to include test paths |
+| Normal | `<leader>f` | Project symbols or files with source preview. Type right after the prefilled `scope:!test` and its space, or clear the scope to include tests |
 | Normal | `<leader>F` | Project content search |
 | Normal | `<leader>b` | Buffer list |
 | Normal | `<leader>g` | Git operations (which-key submenu) |

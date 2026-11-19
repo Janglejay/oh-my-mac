@@ -172,7 +172,7 @@ local syntax = {
 }
 M.xml_syntax = { parse = parse, text = text, first = first, tag = tag, attribute = attribute, contents = contents }
 
-function M.java_references(fallback)
+function M.java_references(fallback, extra)
   local buf = vim.api.nvim_get_current_buf()
   if vim.bo[buf].filetype ~= "java" or vim.bo[buf].buftype ~= "" then return false end
   local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
@@ -190,7 +190,7 @@ function M.java_references(fallback)
   if not name or not name:equal(node) or not (bean or field or param) then return false end
   local root = project(buf)
   if not root then return false end
-  require("user.mybatis_semantics").run(buf, root, false, syntax, fallback)
+  require("user.mybatis_semantics").run(buf, root, false, syntax, fallback, extra)
   return true
 end
 

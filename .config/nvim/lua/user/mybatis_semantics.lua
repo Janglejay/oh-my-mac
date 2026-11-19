@@ -390,7 +390,7 @@ local function show(items, title, definition)
   end
 end
 
-function M.run(buf, root, definition, syntax, fallback)
+function M.run(buf, root, definition, syntax, fallback, extra)
   local file = vim.api.nvim_buf_get_name(buf)
   local pos = vim.api.nvim_win_get_cursor(0)
   local valid = syntax.origin(buf)
@@ -424,6 +424,7 @@ function M.run(buf, root, definition, syntax, fallback)
     for key in pairs(keys) do
       for _, item in pairs((jump and defs or refs)[key] or {}) do add(item) end
     end
+    for _, item in ipairs(extra or {}) do add(item) end
     local title = jump and "MyBatis — Definition" or "MyBatis — Usages"
     if not jump and vim.bo[buf].filetype == "java"
         and #vim.lsp.get_clients({ bufnr = buf, method = "textDocument/references" }) > 0 then

@@ -295,6 +295,8 @@ function M.read(path)
     local implicit = generated and constructors == 0 and not anns.NoArgsConstructor
       and not (anns.AllArgsConstructor and anns.RequiredArgsConstructor)
     local use_generated = generated and (generated.autowired or implicit)
+    local constructor_fields = generated and constructors == 0 and not (anns.AllArgsConstructor and anns.RequiredArgsConstructor) and {}
+    classes[fqn].constructor_fields = constructor_fields or nil
     local copy_qualifier
     for c in body:iter_children() do
       local kind = c:type()
@@ -317,10 +319,14 @@ function M.read(path)
             local var = decl:field("name")[1]
             local initialized = decl:field("value")[1]
             if var and not static then
+              local parameter = not (final and initialized) and (anns.AllArgsConstructor or anns.Value or anns.Builder
+                or not initialized and (final or members.NonNull))
+              if constructor_fields and parameter then
+                constructor_fields[#constructor_fields + 1] = { var:range() }
+              end
               if members.Autowired or members.Resource then
                 append("injection", var, ty, members, member_profiles, { field = true, owner = owner })
-              elseif use_generated and not (final and initialized) and (anns.AllArgsConstructor or anns.Value or anns.Builder
-                  or not initialized and (final or members.NonNull)) then
+              elseif use_generated and parameter then
                 if members.Qualifier and copy_qualifier == nil then copy_qualifier = copies_qualifier(path) end
                 append("injection", var, ty, copy_qualifier and members or {}, member_profiles,
                   { lombok = true, owner = owner })

@@ -2,6 +2,7 @@
 local M = {}
 
 local test_exclusion = "scope:!test"
+local default_scope = test_exclusion .. " "
 local search_title_hint = " · 删除 scope:!test 可包含测试路径"
 local test_dirs = {
   test = true, tests = true, __tests__ = true, testfixtures = true,
@@ -32,7 +33,7 @@ local usage_order = {
 
 local function live_search(opts)
   opts.title = opts.title .. search_title_hint
-  opts.search = test_exclusion
+  opts.search = default_scope
   opts.filter = {
     transform = function(picker, filter)
       -- Keep the token in the visible input, but pass only the query to the finder.
@@ -120,6 +121,10 @@ local function project_files()
 end
 
 function M.root()
+  if vim.g.neovide then
+    local root = require("user.project").root(0)
+    if root then return root end
+  end
   local path = vim.fs.root(0, { { "pom.xml", "build.gradle", "mvnw", "gradlew" } }) or vim.fn.getcwd()
   local parent = vim.fs.dirname(path)
   while parent and parent ~= path and vim.fn.filereadable(parent .. "/pom.xml") == 1 do
@@ -140,22 +145,31 @@ function M.usage_items(title, items)
   return M.items(title .. " · 测试路径排最后", items, usage_order)
 end
 
-function M.references()
+function M.references(skip_spring)
   if vim.bo.filetype == "java" then
     if require("user.java_dependency_usages").at_field() then return end
     local dependency = package.loaded["user.java_dependency_navigation"]
     if dependency and dependency.references_at_field() then return end
-    local function picker()
-      return Snacks.picker.lsp_references(vim.tbl_deep_extend("force", usage_order, {
-        title = "Find Java Usages · 测试路径排最后", include_declaration = false,
-        auto_confirm = false, jump = { reuse_win = false },
-      }))
+    local function java_references(extra)
+      local function picker()
+        local opts = vim.tbl_deep_extend("force", usage_order, {
+          title = "Find Java Usages · 测试路径排最后", include_declaration = false,
+          auto_confirm = false, jump = { reuse_win = false },
+        })
+        if not extra or #extra == 0 then return Snacks.picker.lsp_references(opts) end
+        opts.multi = { "lsp_references", {
+          finder = function() return extra end,
+          format = function(item) return { { item.text } } end,
+        } }
+        return Snacks.picker(opts)
+      end
+      if not require("user.mybatis_navigation").java_references(picker, extra) then return picker() end
     end
-    local function java_references()
-      if not require("user.mybatis_navigation").java_references(picker) then return picker() end
+    local function references()
+      if not require("user.java_constructor_usages").at_field(java_references) then return java_references() end
     end
-    if require("user.spring_navigation").run(false, java_references) then return end
-    return java_references()
+    if not skip_spring and require("user.spring_navigation").run(false, references) then return end
+    return references()
   end
   return Snacks.picker.lsp_references(vim.tbl_deep_extend("force", usage_order, {
     title = "Find Usages · 测试路径排最后 · 删除 !.m2 可包含依赖", pattern = "!.m2",
@@ -185,7 +199,7 @@ function M.project_symbols()
   end
   return Snacks.picker({
     title = "Search Everywhere — Classes / Methods" .. search_title_hint,
-    pattern = test_exclusion, transform = mark_path_scope,
+    pattern = default_scope, transform = mark_path_scope,
     cwd = M.root(), preview = "file",
     finder = function(_, ctx)
       return require("snacks.picker.source.proc").proc(ctx:opts({

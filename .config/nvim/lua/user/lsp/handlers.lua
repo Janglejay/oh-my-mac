@@ -190,7 +190,7 @@ local function lsp_keymaps(bufnr)
           end
         end
         if at_def then
-          navigation.references()
+          navigation.references(true)
         elseif #defs == 1 then
           show_definition(defs[1], encodings[1])
         else
