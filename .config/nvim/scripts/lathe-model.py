@@ -1,5 +1,5 @@
 #!/opt/homebrew/anaconda3/bin/python3
-"""Prepare isolated Java 8 Lathe models for automatically discovered Maven roots."""
+"""Prepare isolated Lathe models for automatically discovered Maven roots."""
 from pathlib import Path
 import argparse
 import contextlib
@@ -22,6 +22,8 @@ SCRIPT = Path(__file__).resolve()
 CHILD = None
 POM_FINGERPRINTS = {}
 ANALYSIS_LOMBOK = (1, 18, 38)
+COMPATIBLE_COMPILER = '3.13.0'
+DEPENDENCY_OVERRIDES = 'dependency-overrides.json'
 SKIP = {'.git', '.lathe', 'target', 'node_modules', '.venv', '__pycache__', '.idea', '.gradle',
         '.claude', '.codex', '.agents', '.opencode', '.gitnexus'}
 
@@ -300,7 +302,8 @@ def refresh_local_dependencies():
 def watch_files(info):
     paths = [str(p) for p in CHECKOUT.rglob('pom.xml') if not any(x in SKIP for x in p.relative_to(CHECKOUT).parts)]
     paths += [str(p) for p in CHECKOUT.rglob('lombok.config') if not any(x in SKIP for x in p.relative_to(CHECKOUT).parts)]
-    paths += [str(SOURCE / 'lombok.config'), str(Path.home() / '.m2/settings.xml')]
+    paths += [str(SOURCE / 'lombok.config'), str(Path.home() / '.m2/settings.xml'),
+              str(TRIAL / DEPENDENCY_OVERRIDES)]
     for directory in (SOURCE, *SOURCE.parents):
         paths += [str(directory / '.mvn' / name) for name in ('maven.config', 'jvm.config', 'extensions.xml')]
         if directory == CHECKOUT:
@@ -345,24 +348,139 @@ def fingerprint(path):
     return {"size": len(data), "checksum": crc ^ 0xFFFFFFFF}
 
 
-def compiler_compatibility():
-    """Adapt only private compiler launch settings; preserve original Maven inputs."""
+def capture_compatibility(log, previous):
+    """Keep compatibility decisions tied to concrete failures in this project's capture."""
+    modules = set(previous.get('compiler_modules', ()))
+    for names in re.findall(r'maven-compiler-plugin [\w.-]+ \(([^)]+)\) is older than', log):
+        modules.update(name.strip() for name in names.split(','))
+    native_git = {}
+    for coordinate in previous.get('native_git', ()):
+        group, artifact, *versions = coordinate.split(':')
+        if not versions:
+            # Older captures recorded the plugin identity without its version.
+            versions = re.findall(r'--- git-commit-id:([\w.-]+):revision', log)
+        if versions:
+            native_git[f'{group}:{artifact}'] = versions[0]
+    for group, artifact, version in re.findall(
+            r'Failed to execute goal ([\w.-]+):(git-commit-id-(?:maven-)?plugin):([\w.-]+):[^\n]+Missing unknown', log):
+        native_git[f'{group}:{artifact}'] = version
+    javafx = previous.get('javafx', False) or bool(re.search(r'package javafx\.[\w.]+ does not exist', log))
+    class_versions = re.findall(r'class file has wrong version (\d+)\.\d+, should be 52\.0', log)
+    maven_java = previous.get('maven_java', False) or any(int(version) > 52 for version in class_versions)
+    return {'compiler_modules': sorted(modules),
+            'native_git': [f'{key}:{value}' for key, value in sorted(native_git.items())],
+            'javafx': javafx, 'maven_java': maven_java}
+
+
+def capture_jdk(compatibility):
+    if compatibility['maven_java']:
+        return JDK
+    if not compatibility['javafx']:
+        return PROJECT_JDK
+    for home in sorted(PROJECT_JDK.parents[2].glob('*.jdk/Contents/Home')):
+        release = home / 'release'
+        if (release.is_file() and 'JAVA_VERSION="1.8.' in release.read_text()
+                and (home / 'bin/javac').is_file() and (home / 'jre/lib/ext/jfxrt.jar').is_file()):
+            return home
+    raise RuntimeError('This project needs a local Java 8 JDK with JavaFX for Lathe capture')
+
+
+def local_dependency_overrides():
+    config = TRIAL / DEPENDENCY_OVERRIDES
+    overrides = {}
+    if config.is_file():
+        for item in json.loads(config.read_text()):
+            relative = Path(item['pom'])
+            coordinate = (item['groupId'], item['artifactId'])
+            versions = (item['from'], item['to'])
+            if (relative.is_absolute() or '..' in relative.parts or relative.name != 'pom.xml'
+                    or not (BUILD_REPO / relative).resolve().is_relative_to(WORKTREE)):
+                raise RuntimeError('Dependency override must select a POM inside the analysis reactor')
+            if not all(re.fullmatch(r'[A-Za-z0-9][\w.+-]*', part) for part in (*coordinate, *versions)):
+                raise RuntimeError('Dependency overrides require literal Maven coordinates')
+            module = overrides.setdefault(relative, {})
+            if coordinate in module:
+                raise RuntimeError('Duplicate local dependency override: ' + ':'.join(coordinate))
+            module[coordinate] = versions
+    return overrides
+
+
+def build_compatibility(compatibility, build_jdk, overrides, log):
+    """Adapt compiler and Git plugin settings in the managed build copy only."""
     records = json.loads((TRIAL / 'managed-inputs.json').read_text())
+    changes = {}
+    applied = []
     for path in BUILD_REPO.rglob('pom.xml'):
         rel = path.relative_to(BUILD_REPO)
-        if any(part in SKIP for part in rel.parts):
-            continue
         original = CHECKOUT / rel
-        POM_FINGERPRINTS[str(original)] = fingerprint(path)
+        if any(part in SKIP for part in rel.parts) or not original.is_file():
+            continue
+        if not original.is_relative_to(SOURCE) and not SOURCE.is_relative_to(original.parent):
+            continue
+        key = str(original)
+        if key not in POM_FINGERPRINTS:
+            POM_FINGERPRINTS[key] = fingerprint(path)
         tree = ET.parse(path); root = tree.getroot()
         ns = root.tag.split('}')[0] + '}' if root.tag.startswith('{') else ''
-        if ns:
-            ET.register_namespace('', ns[1:-1])
-        changed = False
-        for plugin in root.iter(ns + 'plugin'):
+
+        def child(parent, name):
+            node = parent.find(ns + name)
+            return node if node is not None else ET.SubElement(parent, ns + name)
+
+        before = ET.tostring(root)
+        module_overrides = overrides.get(rel, {})
+        override_active = False
+        for dep in root.findall(f'./{ns}dependencies/{ns}dependency'):
+            coordinate = (dep.findtext(ns + 'groupId'), dep.findtext(ns + 'artifactId'))
+            versions = module_overrides.get(coordinate)
+            version = dep.find(ns + 'version')
+            if versions and version is not None and version.text == versions[0]:
+                version.text = versions[1]
+                override_active = True
+                applied.append(f'{rel}: {":".join(coordinate)} {versions[0]} -> {versions[1]}')
+        legacy_compiler = root.findtext(ns + 'artifactId') in compatibility['compiler_modules']
+        if legacy_compiler or override_active:
+            plugins = child(child(root, 'build'), 'plugins')
+            compiler = next((node for node in plugins.findall(ns + 'plugin')
+                             if node.findtext(ns + 'artifactId') == 'maven-compiler-plugin'), None)
+            if compiler is None:
+                compiler = ET.SubElement(plugins, ns + 'plugin')
+                child(compiler, 'artifactId').text = 'maven-compiler-plugin'
+            if legacy_compiler:
+                child(compiler, 'version').text = COMPATIBLE_COMPILER
+            if override_active:
+                # Even a navigation-only reactor retry must compile this module successfully.
+                child(child(compiler, 'configuration'), 'failOnError').text = 'true'
+
+        for coordinate in compatibility['native_git']:
+            group, artifact, version = coordinate.split(':')
+            # Maven's JGit implementation cannot read the objects of some linked worktrees.
+            # Supply a default for inherited plugins and fix explicit local configurations.
+            managed = child(child(child(root, 'build'), 'pluginManagement'), 'plugins')
+            plugins = [node for node in root.iter(ns + 'plugin')
+                       if node.findtext(ns + 'groupId') == group and node.findtext(ns + 'artifactId') == artifact]
+            if not any(node in list(managed) for node in plugins):
+                plugin = ET.SubElement(managed, ns + 'plugin')
+                child(plugin, 'groupId').text = group
+                child(plugin, 'artifactId').text = artifact
+                child(plugin, 'version').text = version
+                plugins.append(plugin)
+            for plugin in plugins:
+                child(child(plugin, 'configuration'), 'useNativeGit').text = 'true'
+                for config in plugin.findall(f'./{ns}executions/{ns}execution/{ns}configuration'):
+                    child(config, 'useNativeGit').text = 'true'
+
+        legacy_plugins = () if compatibility['maven_java'] else root.iter(ns + 'plugin')
+        for plugin in legacy_plugins:
             if plugin.findtext(ns + 'artifactId') != 'maven-compiler-plugin':
                 continue
             for config in plugin.iter(ns + 'configuration'):
+                bootclasspath = config.find(f'{ns}compilerArguments/{ns}bootclasspath')
+                if bootclasspath is not None and bootclasspath.text:
+                    # Maven runs on a modern JDK, while the forked compiler uses Java 8.
+                    for archive in ('rt.jar', 'jce.jar'):
+                        bootclasspath.text = bootclasspath.text.replace(
+                            '${java.home}/lib/' + archive, str(build_jdk / 'jre/lib' / archive))
                 release = config.find(ns + 'release')
                 fork = config.findtext(ns + 'fork')
                 executable = config.findtext(ns + 'executable')
@@ -374,19 +492,26 @@ def compiler_compatibility():
                         raise RuntimeError('Automatic analysis is configured for Java 8, not release ' + value)
                     config.remove(release)
                 for name, value in [('source', '1.8'), ('target', '1.8'), ('fork', 'true'),
-                                    ('executable', str(PROJECT_JDK / 'bin/javac'))]:
-                    child = config.find(ns + name)
-                    if child is None:
-                        child = ET.SubElement(config, ns + name)
-                    child.text = value
-                changed = True
-        if changed:
-            tree.write(path, encoding='utf-8', xml_declaration=True)
-            records[str(rel)] = digest(path)
+                                    ('executable', str(build_jdk / 'bin/javac'))]:
+                    child(config, name).text = value
+        if ET.tostring(root) != before:
+            if ns:
+                ET.register_namespace('', ns[1:-1])
+            changes[path] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+    for path, content in changes.items():
+        temporary = path.with_name('pom.xml.lathe-tmp')
+        temporary.write_bytes(content)
+        temporary.replace(path)
+        records[str(path.relative_to(BUILD_REPO))] = hashlib.sha256(content).hexdigest()
     atomic_json(TRIAL / 'managed-inputs.json', records)
+    if applied:
+        with log.open('a') as stream:
+            for item in applied:
+                stream.write('[Lathe analysis dependency override] ' + item + '\n')
+    return applied
 
 
-def publish_live():
+def publish_live(stale_params=()):
     """Publish metadata under the same record lock used by Lathe's writer."""
     raw = WORKTREE / ".lathe"
     workspace = json.loads((raw / "workspace.json").read_text())
@@ -398,6 +523,16 @@ def publish_live():
     if stage.exists():
         shutil.rmtree(stage)
     shutil.copytree(raw, stage, ignore=shutil.ignore_patterns("*.lock", "*.log", "*.pid", "lathe.lock"))
+    for rel in stale_params:
+        params = stage / rel
+        source_tree = params.stem.removeprefix('lsp-params-')
+        generated = 'generated-test-sources' if source_tree == 'test-classes' else 'generated-sources'
+        params.unlink()
+        params.with_name(f'lsp-stamps-{source_tree}.json').unlink(missing_ok=True)
+        for name in (source_tree, generated):
+            mirror = params.with_name(name)
+            if mirror.is_dir():
+                shutil.rmtree(mirror)
     for output in workspace.get("outputs", []):
         output["path"] = str(WORKTREE / output["path"])
     for resource in workspace.get("resourceRoots", []):
@@ -523,14 +658,44 @@ def owned(command, cwd, log, timeout=600):
         CHILD = None
 
 
-def analysis_parameters():
+def compiler_targets(log):
+    # Lathe's Maven capture records --release but omits explicit -source/-target.
+    targets = {}
+    module = None
+    for line in log.read_text(errors='replace').splitlines():
+        if line.startswith('[INFO] --- '):
+            match = re.match(r'\[INFO\] --- (?:maven-)?compiler:[^:]+:compile .* @ (\S+) ---', line)
+            module = match[1] if match else None
+        if module and line.startswith('[INFO] Compiling '):
+            level = re.search(r'\b(?:target|release) (?:1\.)?(\d+)\]', line)
+            if level:
+                targets[module] = level[1]
+    return targets
+
+
+def analysis_parameters(build_jdk, maven_java, log, stale_params):
     version_text = '.'.join(map(str, ANALYSIS_LOMBOK))
     default_lombok = SHARED_REPO / f'org/projectlombok/lombok/{version_text}/lombok-{version_text}.jar'
     binding = SHARED_REPO / 'org/projectlombok/lombok-mapstruct-binding/0.2.0/lombok-mapstruct-binding-0.2.0.jar'
-    for path in (WORKTREE / '.lathe').rglob('lsp-params-*.json'):
+    raw = WORKTREE / '.lathe'
+    targets = compiler_targets(log) if maven_java else {}
+    releases = set()
+    for path in raw.rglob('lsp-params-*.json'):
+        if path.relative_to(raw) in stale_params:
+            continue
         value = json.loads(path.read_text())
-        value['release'] = '8'
-        value.pop('source', None); value.pop('target', None)
+        if not maven_java:
+            value['release'] = '8'
+            value.pop('source', None); value.pop('target', None)
+        elif not value.get('release'):
+            descriptor = WORKTREE / path.parent.relative_to(raw) / 'pom.xml'
+            if descriptor.is_file():
+                target = targets.get(pom(descriptor).findtext('artifactId'))
+                if target:
+                    value['release'] = target
+        level = str(value.get('release') or value.get('target') or value.get('source') or '').removeprefix('1.')
+        if level.isdigit():
+            releases.add(int(level))
         for key in ('classpath', 'processorPath'):
             updated = []
             for item in value.get(key, []):
@@ -543,13 +708,14 @@ def analysis_parameters():
                         item = str(default_lombok)
                 updated.append(item)
             value[key] = updated
-        rt = str(PROJECT_JDK / 'jre/lib/rt.jar')
-        if rt not in value['classpath']:
-            value['classpath'].append(rt)
+        for runtime in (build_jdk / 'jre/lib/rt.jar', build_jdk / 'jre/lib/ext/jfxrt.jar'):
+            if runtime.is_file() and str(runtime) not in value['classpath']:
+                value['classpath'].append(str(runtime))
         processors = value.get('processorPath') or value['classpath']
         if str(binding) not in processors:
             processors.append(str(binding))
         atomic_json(path, value)
+    return sorted(releases)
 
 
 def prepare(info, args):
@@ -569,10 +735,17 @@ def prepare(info, args):
     previous = old_state.get('input_stats', {})
     build_changed = any(previous.get(p) != v and (p in previous or not v.endswith(':missing'))
                         for p, v in initial_stats.items())
+    configuration_changed = any(previous.get(p) != v and (p in previous or not v.endswith(':missing'))
+                                for p, v in initial_stats.items()
+                                if Path(p).name in {'pom.xml', 'maven.config', 'extensions.xml', 'settings.xml'})
     result = {**info, 'status': 'preparing', 'pid': os.getpid(), 'watch': initial_watch,
               'watch_values': list(initial_stats.values()), 'input_stats': initial_stats}
+    log = TRIAL / 'logs/capture.log'
+    prior_log = log.read_text(errors='replace') if log.exists() and not configuration_changed else ''
+    prior_compatibility = {} if configuration_changed else old_state.get('capture_compatibility', {})
+    compatibility = capture_compatibility(prior_log, prior_compatibility)
     atomic_json(TRIAL / 'state.json', result)
-    log = TRIAL / 'logs/capture.log'; log.write_text('')
+    log.write_text('')
     started = time.monotonic()
     BUILD_ENV = {**os.environ, 'JAVA_HOME': str(JDK), 'LATHE_JAVA_HOME': str(JDK),
                  'LATHE_CACHE': str(TRIAL / 'cache'), 'GIT_OPTIONAL_LOCKS': '0'}
@@ -588,8 +761,8 @@ def prepare(info, args):
         create_build(info)
         removed_java = sync_source()
         validate_outputs(info)
-        compiler_compatibility()
         refresh_local_dependencies()
+        overrides = local_dependency_overrides()
         # Maven skips unchanged compiles, so retain their captures. The official
         # full-reactor sync already prunes removed modules and source trees.
         raw = WORKTREE / '.lathe'
@@ -598,32 +771,81 @@ def prepare(info, args):
         needs_capture = not (raw / 'workspace.json').is_file()
         extension_paths = (RESOURCES / 'extension-classpath.txt').read_text().strip().split(os.pathsep)
         extension = os.pathsep.join(str(SHARED_REPO / Path(p).relative_to(RESOURCES / 'm2')) for p in extension_paths)
-        command = ['/opt/homebrew/bin/mvn', '-o', '-B', '-ntp',
-                   '-Dmaven.repo.local=' + str(SHARED_REPO), '-Dmaven.ext.class.path=' + extension,
-                   '-Dlathe.cache=' + str(TRIAL / 'cache'), '-Dlathe.disabled=false',
-                   '-Dmaven.compiler.source=1.8', '-Dmaven.compiler.target=1.8', '-Dmaven.compiler.release=',
-                   '-Dmaven.compiler.fork=true', '-Dmaven.compiler.executable=' + str(PROJECT_JDK / 'bin/javac'),
-                   '-Dmaven.test.skip=true', '-DskipTests=true', '-Djacoco.skip=true']
-        if args.clean or removed_java or needs_capture or (old_state.get('input_stats') and build_changed):
-            command.append('clean')
-        command.append('process-test-classes')
-        code = owned(command, WORKTREE, log)
-        if code:
+        clean = (args.clean or removed_java or needs_capture or old_state.get('navigation_only')
+                 or (old_state.get('input_stats') and build_changed))
+        navigation_only = False
+        manifest = raw / 'workspace.json'
+        for attempt in range(4):
+            result['capture_compatibility'] = compatibility
+            build_jdk = capture_jdk(compatibility)
+            applied_overrides = build_compatibility(compatibility, build_jdk, overrides, log)
+            if compatibility['maven_java'] and not raw.exists():
+                reactor = pom(WORKTREE / 'pom.xml')
+                if (reactor.find('parent') is None and reactor.find('modules/module') is not None
+                        and not any(reactor.iter('lathe.disabled'))):
+                    # An aggregator that is not a module parent can run lathe:init after its modules.
+                    raw.mkdir()
+            command = ['/opt/homebrew/bin/mvn', '-o', '-B', '-ntp',
+                       '-Dmaven.repo.local=' + str(SHARED_REPO), '-Dmaven.ext.class.path=' + extension,
+                       '-Dlathe.cache=' + str(TRIAL / 'cache'), '-Dlathe.disabled=false',
+                       '-Dmaven.compiler.fork=true', '-Dmaven.compiler.executable=' + str(build_jdk / 'bin/javac'),
+                       '-Dmaven.test.skip=true', '-DskipTests=true', '-Djacoco.skip=true']
+            if not compatibility['maven_java']:
+                command.extend(['-Dmaven.compiler.source=1.8', '-Dmaven.compiler.target=1.8', '-Dmaven.compiler.release='])
+            if navigation_only:
+                command.extend(['--fail-at-end', '-Dmaven.compiler.failOnError=false'])
+            if clean or attempt:
+                command.append('clean')
+            offset = log.stat().st_size
+            previous_manifest = file_stat(str(manifest))
+            attempt_started_ns = time.time_ns()
+            code = owned([*command, 'process-test-classes'], WORKTREE, log)
+            if code == 0:
+                break
+            with log.open('rb') as stream:
+                stream.seek(offset)
+                attempt_log = stream.read().decode(errors='replace')
+            retry = capture_compatibility(attempt_log, compatibility)
+            if retry == compatibility:
+                # Lathe still records javac parameters when Java source has unresolved symbols.
+                # Build the source index, and keep the project's actual compile errors visible.
+                if navigation_only or 'COMPILATION ERROR' not in attempt_log or 'cannot find symbol' not in attempt_log:
+                    break
+                navigation_only = True
+            else:
+                compatibility = retry
+            sync_source()
+        # A failed reactor can still sync an index for its independent modules. Only
+        # publish a manifest written by this invocation, and keep Maven's failure visible.
+        partial_model = bool(code and navigation_only and manifest.is_file()
+                             and file_stat(str(manifest)) != previous_manifest)
+        if code != 0 and not partial_model:
             raise RuntimeError('Offline Maven capture failed; original POM and Lombok were not changed')
-        if not (raw / 'workspace.json').is_file():
+        if not manifest.is_file():
             raise RuntimeError('Maven completed without producing a Lathe workspace model')
-        analysis_parameters()
-        atomic_json(TRIAL / 'capture-result.json', {'exit_code': 0, 'time_ns': time.time_ns(),
-                    'source': str(SOURCE), 'build_jdk': str(PROJECT_JDK), 'analysis_release': '8',
+        stale_params = set()
+        if partial_model:
+            params = list(raw.rglob('lsp-params-*.json'))
+            stale_params = {p.relative_to(raw) for p in params if p.stat().st_mtime_ns < attempt_started_ns}
+            if len(stale_params) == len(params):
+                raise RuntimeError('The failed Maven build produced no fresh Java compiler parameters')
+        releases = analysis_parameters(build_jdk, compatibility['maven_java'], log, stale_params)
+        atomic_json(TRIAL / 'capture-result.json', {'exit_code': code, 'time_ns': time.time_ns(),
+                    'source': str(SOURCE), 'build_jdk': str(build_jdk), 'analysis_releases': releases,
+                    'navigation_only': navigation_only, 'partial_model': partial_model,
+                    'dependency_overrides': applied_overrides,
                     'analysis_lombok': list(ANALYSIS_LOMBOK)})
-        publish_live()
+        publish_live(stale_params)
         live_state = json.loads((LIVE / 'live-state.json').read_text())
         extra = {name: value for name, value in zip(live_state['watch'], live_state['watch_values'])}
         extra.update(initial_stats)
         live_state['watch'] = sorted(extra)
         live_state['watch_values'] = [extra[p] for p in live_state['watch']]
         atomic_json(LIVE / 'live-state.json', live_state)
-        result.update(status='ready', model_ready=True, watch=live_state['watch'], watch_values=live_state['watch_values'])
+        result.update(status='ready', model_ready=True, java_releases=releases,
+                      navigation_only=navigation_only, partial_model=partial_model,
+                      dependency_override_count=len(applied_overrides),
+                      watch=live_state['watch'], watch_values=live_state['watch_values'])
     except BaseException as error:
         result.update(status='failed', error=str(error), model_ready=(LIVE / '.lathe/workspace.json').is_file())
         text = log.read_text() if log.exists() else ''
@@ -663,7 +885,12 @@ def main():
             state_file = Path(info['state']) / 'state.json'
             if state_file.exists():
                 state = json.loads(state_file.read_text())
-                for key in ('status', 'watch', 'watch_values', 'error', 'log', 'missing_dependency'):
+                override_file = str(Path(info['state']) / DEPENDENCY_OVERRIDES)
+                attempted = state.get('input_stats', {}).get(override_file, override_file + ':missing')
+                if info['model_ready'] and file_stat(override_file) != attempted:
+                    info['needs_analysis_refresh'] = True
+                for key in ('status', 'watch', 'watch_values', 'error', 'log', 'missing_dependency',
+                            'java_releases', 'navigation_only', 'partial_model', 'dependency_override_count'):
                     if key in state:
                         info[key] = state[key]
             print(json.dumps(info, ensure_ascii=False)); return 0

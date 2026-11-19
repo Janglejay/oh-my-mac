@@ -2,7 +2,7 @@
 
 面向 Java 代码审查和日常编辑的 Neovim 配置，也保留 Python、TypeScript/Vue 语义服务，以及 Rust 等语言的语法高亮。
 
-Java 只使用 **Lathe 0.3.1**，打开 Maven 工程自动准备 Java 8 分析模型。其他语言由独立安装的语言服务提供支持，快捷键和补全共用 Neovim 的统一配置。重启 Neovim 后加载修改，不向各项目写入编辑器配置。
+Java 语义导航使用 **Lathe 0.3.1**，打开 Maven 工程时自动准备分析模型。其他语言由独立安装的语言服务提供支持，快捷键和补全共用 Neovim 的统一配置。编辑器配置保存在 Neovim 的配置目录。
 
 ---
 
@@ -167,6 +167,8 @@ Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 
 | `f` | AceJump 字符跳转 | AceJump |
 | `F` | AceJump Treesitter 选择 | - |
 
+`gn` 跳到配对括号。Visual 模式下保留选区起点，将选区扩展到配对位置，支持字符、行和块选择。
+
 **文本对象**（Visual/Operator 模式）：
 - `af` / `if`：方法外部/内部
 - `ac` / `ic`：类外部/内部
@@ -322,7 +324,7 @@ Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用
 
 - **LSP**: Lathe 提供 Java 语言服务，Spring Tools 复用其工程模型提供 Bean 索引
 - **格式化**: google-java-format
-- **特色功能**: Java 8 分析、Lombok 支持、多模块 Maven；`,ha` 静态搜索 Spring HTTP 注解
+- **特色功能**: Maven 分析模型、Lombok 支持、多模块导航。`,ha` 静态搜索 Spring HTTP 注解
 
 
 [详细 Java 开发指南 →](./docs/java-dev-guide.md)
@@ -369,20 +371,21 @@ Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用
 | POM、构建配置或已解析依赖变化 | 自动在后台更新独立模型；失败保留上一份可用模型 |
 | 同时打开多个工程 | 按规范化工程根路径区分客户端、构建目录和缓存，避免同名类跨工程串跳 |
 
-首次准备会离线运行 Maven 并编译主源码，耗时取决于项目规模；这不是业务测试通过的证明。当前准备命令跳过测试编译和执行，测试源码的完整语义能力未纳入本轮验收。缺少本地依赖或原工程编译失败时会显示失败状态，不修改原工程来绕过错误。
+首次准备会离线运行 Maven 并编译主源码，耗时取决于项目规模。准备命令跳过测试编译和执行。缺少本地依赖时请查看 `:LatheLog`。遇到源码符号解析错误时，Lathe 会尝试继续捕获导航所需的编译参数。若有模块仍被 Maven 阻断，只发布本次成功捕获的模块，状态栏显示「部分索引，Maven 有错误」。
 
-### Java 8 与 Lombok 边界
+### JDK 与 Lombok
 
 | 部分 | 使用方式 |
 |------|----------|
 | Lathe 运行时 | JDK 21，默认 JVM 参数 `-Xms256m -Xmx3g` |
-| 独立构建副本 | JDK 8 编译器，保留项目原 Lombok 依赖；显式 `release=8` 只在副本转为等价的 source/target 8 参数 |
-| 编辑器分析模型 | `--release 8`。分析用 Lombok 最低为 1.18.38，保留生成方法关联所需的注解标记。原项目继续使用自己的版本 |
+| 独立构建副本 | Java 8 工程用 JDK 8；缺少 JavaFX 时选用本机带 JavaFX 的 JDK 8。遇到更高版本的字节码时改用 JDK 21，沿用 Maven 的编译版本 |
+| Maven 兼容 | 按捕获日志在独立副本中修正过旧的编译插件、Java 8 启动类路径和 Git 元数据插件配置 |
+| 编辑器分析模型 | 使用捕获的 Java 版本。分析用 Lombok 最低为 1.18.38，保留生成方法关联所需的注解标记。原项目继续使用自己的版本 |
 | 原工程 | 不写入 `.lathe`、构建输出或 POM；不自动 `git add` |
 
 ### 安装资源与缓存
 
-本机安装资源由 `lathe_config.lua` 的 `resources` 指定，目前位于 `~/.codex/experiments/lathe-java8-20261116-side`，需保留其中的 `lathe.nvim-0.3.1`、`extension-classpath.txt` 和 `vim-trial/m2`。这些资源不包含在配置提交中；分析脚本使用的 Maven/JDK 8 路径见 `scripts/lathe-model.py`。本机自动模型准备当前面向 Maven Java 8；不能将其视为所有构建系统均已验证。
+本机安装资源由 `lathe_config.lua` 的 `resources` 指定，目前位于 `~/.codex/experiments/lathe-java8-20261116-side`，需保留其中的 `lathe.nvim-0.3.1`、`extension-classpath.txt` 和 `vim-trial/m2`。这些资源不包含在配置提交中。准备脚本使用的 Maven 和 JDK 路径见 `scripts/lathe-model.py`，自动模型准备适用于 Maven 工程。
 
 | 数据 | 默认位置 |
 |------|----------|
@@ -393,11 +396,29 @@ Neovide 的启动、Command 快捷键、字体和窗口设置见 [Neovide 使用
 
 后台准备退出时只收尾本次任务的子进程；已完成的模型和缓存保留供下次复用。
 
+### 本机依赖覆盖
+
+在对应工程的 Lathe 状态目录创建 `dependency-overrides.json`。以下是虚构示例，`pom` 是相对于 Git 工作区根目录的路径。
+
+```json
+[
+  {
+    "pom": "example-client/pom.xml",
+    "groupId": "org.example",
+    "artifactId": "example-sdk",
+    "from": "1.0.0",
+    "to": "1.1.0"
+  }
+]
+```
+
+Lathe 只替换独立构建副本里版本恰好匹配 `from` 的直接依赖。`to` 需要已在本机 Maven 缓存中，覆盖模块仍执行 Maven 校验并要求编译成功。修改后可以用 `,lr` 刷新。状态栏提示「分析依赖覆盖」，`:LatheLog` 记录实际应用的替换。
+
 ### 状态与维护入口
 
 | 入口 | Lathe |
 |---|---|
-| 状态栏 | 等待、准备模型、失败、模型已准备和客户端连接状态 |
+| 状态栏 | 准备和连接状态、Java 版本、部分索引提示和本机依赖覆盖提示 |
 | `,lr` | 刷新当前工程模型，首次准备失败后可重试 |
 | `,lR` | 在独立构建副本 clean 后重新准备 |
 | `:LatheLog` | 准备日志 |

@@ -46,7 +46,8 @@ end
 local function update(ctx, data)
   if not data then return end
   if data.status then ctx.missing_dependency = data.missing_dependency end
-  for _, key in ipairs({ "watch", "watch_values", "status", "error", "log" }) do
+  for _, key in ipairs({ "watch", "watch_values", "status", "error", "log", "java_releases", "navigation_only",
+    "partial_model", "dependency_override_count" }) do
     if data[key] ~= nil then ctx[key] = data[key] end
   end
   ctx.ready = model_exists(ctx)
@@ -249,7 +250,14 @@ function M.status()
   end
   local cs = vim.lsp.get_clients({ name = "lathe" })
   for _, c in ipairs(cs) do
-    if c.config.root_dir == ctx.analysis then return c.initialized and "ready" or "busy", "Lathe · Java 8 · " .. name end
+    if c.config.root_dir == ctx.analysis then
+      local releases = ctx.java_releases or { 8 }
+      local java = #releases > 0 and "Java " .. table.concat(releases, "/") .. " · " or ""
+      local note = ctx.partial_model and " · 部分索引，Maven 有错误"
+        or (ctx.navigation_only and " · 源码有编译错误" or "")
+      if (ctx.dependency_override_count or 0) > 0 then note = note .. " · 分析依赖覆盖" end
+      return c.initialized and "ready" or "busy", "Lathe · " .. java .. name .. note
+    end
   end
   return "none", "Lathe 模型已准备 · " .. name
 end

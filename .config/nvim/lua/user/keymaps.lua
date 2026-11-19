@@ -44,6 +44,7 @@ keymap("n", "H", "g^", opts)               -- H 跳到当前视觉行首
 keymap("x", "L", "g$", opts)               -- Visual 选择延伸至当前视觉行尾
 keymap("x", "H", "g^", opts)               -- Visual 选择延伸至当前视觉行首
 keymap("n", "gn", "%", opts)               -- gn 跳到匹配括号
+keymap("x", "gn", "%", opts)               -- Visual 移到匹配括号并保留选区起点
 
 -- Edit 快捷键
 keymap("n", "{", "$a {<CR>}<Esc>O", opts) -- { 补 {}
