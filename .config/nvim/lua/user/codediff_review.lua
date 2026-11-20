@@ -312,7 +312,7 @@ function M.bind_merge_keys(tabpage)
     }
     local all_actions = {
       { "mL", "left", "Accept All from Left (Confirm)" },
-      { "mR", "right", "Accept All from Right (Confirm)" },
+      { "mT", "right", "Accept All from Right (Confirm)" },
       { "mA", "both", "Accept Both for All Conflicts (Confirm)" },
       { "mU", "base", "Reset All to Base, Including Resolved (Confirm)" },
     }
@@ -379,6 +379,10 @@ function M.refresh(tabpage, redraw_tree)
   local panel = lib.get_panel_view(tabpage)
   if panel and panel.bufnr and vim.api.nvim_buf_is_valid(panel.bufnr) then close_buffers[panel.bufnr] = true end
   for buf in pairs(close_buffers) do
+    for key, action in pairs({ mR = "reset", mB = "abort_merge" }) do
+      lib.set_buf_keymap(tabpage, buf, "n", key, function() require("user.git_reset")[action]() end,
+        { noremap = true, silent = true, desc = key == "mR" and "Revert File Changes" or "Abort Merge" }, { priority = 20 })
+    end
     for _, key in ipairs({ "q", "<leader>gc" }) do
       lib.set_buf_keymap(tabpage, buf, "n", key, M.close_review,
         { noremap = true, silent = true, desc = "Close Diff" }, { priority = 10 })

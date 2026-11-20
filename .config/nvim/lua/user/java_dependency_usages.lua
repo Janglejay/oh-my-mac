@@ -102,7 +102,7 @@ local function find_usages(buf, client, ctx, class, field, group, artifact, vers
   local win, cursor = vim.api.nvim_get_current_win(), vim.api.nvim_win_get_cursor(0)
   local roots, jars, included = source_sets(ctx, group, artifact, version)
   if #roots == 0 or #jars ~= 1 then
-    vim.notify("Lathe: 未能从当前工程模型确认该字段的依赖版本", vim.log.levels.WARN)
+    vim.notify("Lathe: Could not resolve the dependency version for this field from the project model", vim.log.levels.WARN)
     return
   end
 
@@ -135,16 +135,16 @@ local function find_usages(buf, client, ctx, class, field, group, artifact, vers
     end
     if #items > 0 then
       local title = "Find Usages — " .. class:match("[^%.]+$") .. "." .. field
-      require("user.navigation").usage_items(partial and title .. " · 部分结果" or title, items)
+      require("user.navigation").usage_items(partial and title .. " · Partial results" or title, items)
     else
-      vim.notify("Lathe: " .. (message or (resolved == 0 and "未能确认此依赖字段或访问器"
-        or "当前索引未返回该字段及访问器的项目引用")), vim.log.levels.WARN)
+      vim.notify("Lathe: " .. (message or (resolved == 0 and "Could not resolve this dependency field or its accessors"
+        or "The current index returned no project references to this field or its accessors")), vim.log.levels.WARN)
     end
   end
-  vim.api.nvim_echo({ { "  Lathe 正在查询依赖字段及访问器…", "Comment" } }, false, {})
+  vim.api.nvim_echo({ { "  Lathe: Looking up dependency field and accessor references...", "Comment" } }, false, {})
   timer = vim.defer_fn(function()
     partial = true
-    finish("依赖字段引用查询超时，可稍后重试")
+    finish("Dependency field reference lookup timed out. Try again later")
   end, 45000)
 
   local function request(method, params, callback)
@@ -189,7 +189,7 @@ local function find_usages(buf, client, ctx, class, field, group, artifact, vers
     local function done()
       left, remaining = left - 1, remaining - 1
       if left == 0 and probes[uri] then close(uri) end
-      if remaining == 0 then finish(partial and "未完成全部模块的引用查询" or nil) end
+      if remaining == 0 then finish(partial and "Reference lookup did not finish for all modules" or nil) end
     end
     if not client:notify("textDocument/didOpen", { textDocument = {
       uri = uri, languageId = "java", version = 1, text = table.concat(lines, "\n"),
@@ -224,9 +224,9 @@ local function find_usages(buf, client, ctx, class, field, group, artifact, vers
     vim.schedule_wrap(function(output)
       job = nil
       if not active then return end
-      if output.code ~= 0 then finish("无法读取依赖 class 的字段"); return end
+      if output.code ~= 0 then finish("Could not read fields from the dependency class"); return end
       local calls = operations(vim.split(output.stdout or "", "\n", { plain = true }), field)
-      if #calls == 0 then finish("该字段没有可确认的公开访问器"); return end
+      if #calls == 0 then finish("No public accessors could be resolved for this field"); return end
       remaining = #roots * #calls
       for _, root in ipairs(roots) do probe(root, calls) end
     end))
@@ -245,13 +245,13 @@ function M.at_field()
   local ctx = live.context(buf)
   if not ctx then
     live.ensure(buf)
-    vim.notify("Lathe: 正在恢复依赖来源工程，连接后可重试", vim.log.levels.INFO)
+    vim.notify("Lathe: Restoring the dependency's source project. Retry once it is connected", vim.log.levels.INFO)
     return true
   end
   local client = vim.lsp.get_clients({ bufnr = buf, name = "lathe", method = "textDocument/references" })[1]
   if not client then
     live.ensure(buf)
-    vim.notify("Lathe: 正在连接依赖来源工程，连接后可重试", vim.log.levels.INFO)
+    vim.notify("Lathe: Connecting to the dependency's source project. Retry once it is connected", vim.log.levels.INFO)
     return true
   end
   find_usages(buf, client, ctx, class, field, group, artifact, version)

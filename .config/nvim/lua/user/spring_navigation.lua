@@ -320,7 +320,7 @@ end
 local function notify_missing(profiles)
   local names = vim.tbl_keys(profiles)
   table.sort(names)
-  vim.notify("Spring: 当前 Profile（" .. table.concat(names, ", ") .. "）没有可静态确认的 Bean 跳转或引用",
+  vim.notify("Spring: No statically resolvable bean definitions or references for profiles: " .. table.concat(names, ", "),
     vim.log.levels.INFO)
 end
 
@@ -479,14 +479,14 @@ function M.setup()
     require("user.lathe_live").ensure(ev.buf)
     for _, key in ipairs({ "gd", "gr" }) do
       vim.keymap.set("n", key, function()
-        local function fallback() vim.notify("Spring XML: 光标处没有可静态解析的 Bean", vim.log.levels.INFO) end
+        local function fallback() vim.notify("Spring XML: No statically resolvable bean under the cursor", vim.log.levels.INFO) end
         if not M.run(key == "gd", fallback) then fallback() end
       end, { buffer = ev.buf, desc = key == "gd" and "Go to Spring Bean" or "Find Spring Bean usages" })
     end
   end })
   vim.api.nvim_create_user_command("SpringProfiles", function(opts)
     local ctx = require("user.lathe_live").context(0)
-    if not ctx then vim.notify("Spring: 请先打开 Lathe 工程中的 Java 文件", vim.log.levels.WARN); return end
+    if not ctx then vim.notify("Spring: Open a Java file in a Lathe project first", vim.log.levels.WARN); return end
     if opts.bang then profile_sets[ctx.analysis] = nil
     elseif #opts.fargs > 0 then
       local selected = {}

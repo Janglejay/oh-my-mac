@@ -3,7 +3,7 @@ local M = {}
 
 local test_exclusion = "scope:!test"
 local default_scope = test_exclusion .. " "
-local search_title_hint = " · 删除 scope:!test 可包含测试路径"
+local search_title_hint = " · Remove scope:!test to include test paths"
 local test_dirs = {
   test = true, tests = true, __tests__ = true, testfixtures = true,
   ["test-fixtures"] = true, ["test-classes"] = true,
@@ -142,7 +142,7 @@ function M.items(title, items, opts)
 end
 
 function M.usage_items(title, items)
-  return M.items(title .. " · 测试路径排最后", items, usage_order)
+  return M.items(title .. " · Test paths last", items, usage_order)
 end
 
 function M.references(skip_spring)
@@ -153,7 +153,7 @@ function M.references(skip_spring)
     local function java_references(extra)
       local function picker()
         local opts = vim.tbl_deep_extend("force", usage_order, {
-          title = "Find Java Usages · 测试路径排最后", include_declaration = false,
+          title = "Find Java Usages · Test paths last", include_declaration = false,
           auto_confirm = false, jump = { reuse_win = false },
         })
         if not extra or #extra == 0 then return Snacks.picker.lsp_references(opts) end
@@ -172,14 +172,14 @@ function M.references(skip_spring)
     return references()
   end
   return Snacks.picker.lsp_references(vim.tbl_deep_extend("force", usage_order, {
-    title = "Find Usages · 测试路径排最后 · 删除 !.m2 可包含依赖", pattern = "!.m2",
+    title = "Find Usages · Test paths last · Remove !.m2 to include dependencies", pattern = "!.m2",
     auto_confirm = false, jump = { reuse_win = false },
   }))
 end
 
 function M.definitions()
   return Snacks.picker.lsp_definitions(vim.tbl_deep_extend("force", usage_order, {
-    title = "Go to Definition · 测试路径排最后", jump = { reuse_win = false },
+    title = "Go to Definition · Test paths last", jump = { reuse_win = false },
   }))
 end
 

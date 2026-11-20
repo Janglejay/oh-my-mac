@@ -24,7 +24,7 @@ local function spring_endpoints()
 
   local handle = io.popen(rg_cmd .. " 2>&1")
   if not handle then
-    vim.notify("ripgrep 执行失败", vim.log.levels.ERROR)
+    vim.notify("ripgrep failed", vim.log.levels.ERROR)
     return
   end
 
@@ -155,7 +155,7 @@ local function spring_endpoints()
 
   if #entries == 0 then
     vim.notify(
-      string.format("未找到 Spring 接口。搜索目录: %s\n命令: %s", project_root, rg_cmd),
+      string.format("No Spring endpoints found. Search directory: %s\nCommand: %s", project_root, rg_cmd),
       vim.log.levels.WARN
     )
     return

@@ -260,14 +260,14 @@ function M.setup()
             local name = first(node, "Name")
             local key = name and text(name, b)
             if vim.tbl_contains({ "resultMap", "extends", "refid", "test", "collection", "property", "value" }, key) then
-              vim.notify("MyBatis: 未找到可静态确认的定义", vim.log.levels.INFO)
+              vim.notify("MyBatis: No statically resolvable definition found", vim.log.levels.INFO)
               return
             end
           elseif node:type() == "CharData" or node:type() == "CData" then
             local line = vim.api.nvim_get_current_line()
             for from, value, finish in line:gmatch("()[#$]%{([^}]+)%}()") do
               if col >= from - 1 and col < finish - 1 and value ~= "" then
-                vim.notify("MyBatis: 未找到可静态确认的定义", vim.log.levels.INFO)
+                vim.notify("MyBatis: No statically resolvable definition found", vim.log.levels.INFO)
                 return
               end
             end
@@ -277,14 +277,14 @@ function M.setup()
           node = node:parent()
         end
         search(root, namespace, method, false, origin(b), function()
-          vim.notify("MyBatis: 未找到对应的 Java Mapper 声明", vim.log.levels.WARN)
+          vim.notify("MyBatis: No matching Java mapper declaration found", vim.log.levels.WARN)
         end)
       end
       local function run(definition)
         local root = project(b)
         if not root then return end
         require("user.mybatis_semantics").run(b, root, definition, syntax, definition and mapper_jump or function()
-          vim.notify("MyBatis: 光标处没有可静态确认的引用", vim.log.levels.INFO)
+          vim.notify("MyBatis: No statically resolvable references for the item under the cursor", vim.log.levels.INFO)
         end)
       end
       vim.keymap.set("n", "gd", function() run(true) end, { buffer = b, desc = "Go to MyBatis definition" })

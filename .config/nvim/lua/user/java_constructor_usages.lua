@@ -37,7 +37,7 @@ local function argument_at(loc, class, arity, slot)
   local line, byte = param:start()
   local expression = vim.trim((vim.treesitter.get_node_text(param, text):gsub("%s+", " ")))
   return { file = path, pos = { line + 1, byte },
-    text = ("%s:%d  %s  ·  构造器参数 %d"):format(vim.fs.basename(path), line + 1, expression, slot) }
+    text = ("%s:%d  %s  ·  Constructor argument %d"):format(vim.fs.basename(path), line + 1, expression, slot) }
 end
 
 function M.at_field(done)

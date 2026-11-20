@@ -65,10 +65,10 @@ keymap("n", "sv", ":vs<CR>", opts)
 
 -- 窗口缩放：<Leader> + 方向键，每次 4 格
 -- 比 <C-arrow> 更不易与终端快捷键冲突
-vim.keymap.set("n", "<Leader><Up>",    ":resize +4<CR>",          { noremap=true, silent=true, desc="窗口增高" })
-vim.keymap.set("n", "<Leader><Down>",  ":resize -4<CR>",          { noremap=true, silent=true, desc="窗口减高" })
-vim.keymap.set("n", "<Leader><Right>", ":vertical resize +4<CR>", { noremap=true, silent=true, desc="窗口加宽" })
-vim.keymap.set("n", "<Leader><Left>",  ":vertical resize -4<CR>", { noremap=true, silent=true, desc="窗口减宽" })
+vim.keymap.set("n", "<Leader><Up>",    ":resize +4<CR>",          { noremap=true, silent=true, desc="Increase Window Height" })
+vim.keymap.set("n", "<Leader><Down>",  ":resize -4<CR>",          { noremap=true, silent=true, desc="Decrease Window Height" })
+vim.keymap.set("n", "<Leader><Right>", ":vertical resize +4<CR>", { noremap=true, silent=true, desc="Increase Window Width" })
+vim.keymap.set("n", "<Leader><Left>",  ":vertical resize -4<CR>", { noremap=true, silent=true, desc="Decrease Window Width" })
 
 -- Tab 操作
 keymap("n", "<Tab>", ">>", opts)          -- Tab 右缩进
@@ -109,7 +109,7 @@ keymap("n", "<C-d>", "<cmd>lua require 'gitsigns'.next_hunk()<cr>", opts)
 vim.keymap.set("n", "<Leader>gf", function()
   local path = vim.fn.expand("%:p:h")
   vim.fn.jobstart({ "open", "-a", "Fork", path })
-end, { noremap = true, silent = true, desc = "在 Fork 中打开" })
+end, { noremap = true, silent = true, desc = "Open in Fork" })
 
 -- ====================
 -- 跳转历史
@@ -211,7 +211,7 @@ local function toggle_window_zoom()
       vim.api.nvim_set_current_win(current)
       vim.fn.winrestview(active_view)
     end
-    if not ok then vim.notify("窗口恢复失败：" .. tostring(err), vim.log.levels.ERROR) end
+    if not ok then vim.notify("Could not restore window layout: " .. tostring(err), vim.log.levels.ERROR) end
     return
   end
   if #wins < 2 then return end
@@ -233,7 +233,7 @@ local function toggle_window_zoom()
     zoom_states[tab] = state
   else
     resize_for_zoom(wins, function() vim.cmd(state.restore) end)
-    vim.notify("窗口最大化失败：" .. tostring(err), vim.log.levels.ERROR)
+    vim.notify("Could not maximize window: " .. tostring(err), vim.log.levels.ERROR)
   end
   vim.fn.winrestview(active_view)
 end
@@ -247,7 +247,7 @@ vim.api.nvim_create_autocmd("TabClosed", {
   end,
 })
 vim.keymap.set("n", "<Leader>w", toggle_window_zoom,
-  { noremap = true, silent = true, desc = "最大化当前窗口/恢复原布局" })
+  { noremap = true, silent = true, desc = "Maximize or Restore Window" })
 vim.keymap.set("n", "<Leader>c", function() Snacks.bufdelete() end, { silent = true, desc = "Close Editor" })         -- CloseContent
 vim.keymap.set("n", "<Leader>C", function() Snacks.bufdelete.other() end, { silent = true, desc = "Close Other Editors" })     -- CloseAllEditorsButActive
 vim.keymap.set("n", "gw", function() require("user.project").switch() end, { silent = true, desc = "Switch Project" })         -- SwitchProject

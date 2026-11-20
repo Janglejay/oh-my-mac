@@ -377,7 +377,8 @@ end
 
 local function show(items, title, definition)
   if #items == 0 then
-    vim.notify("MyBatis: 未找到可静态确认的" .. (definition and "定义" or "引用"), vim.log.levels.INFO)
+    vim.notify(definition and "MyBatis: No statically resolvable definition found"
+      or "MyBatis: No statically resolvable references found", vim.log.levels.INFO)
   elseif definition and #items == 1 then
     local item = items[1]
     local pos = { line = item.pos[1] - 1, character = item.pos[2] }
@@ -434,7 +435,7 @@ function M.run(buf, root, definition, syntax, fallback, extra)
       local timer = vim.defer_fn(function()
         if cancel then cancel() end
         if picker and not picker.closed then
-          picker.title = title .. " · Java LSP 超时 · 测试路径排最后"
+          picker.title = title .. " · Java LSP timed out · Test paths last"
           picker:update_titles()
         end
       end, 30000)
@@ -461,10 +462,10 @@ function M.run(buf, root, definition, syntax, fallback, extra)
         end
         order(items)
         picker.opts.items = items
-        picker.title = title .. (incomplete and " · Java LSP 部分结果" or "") .. " · 测试路径排最后"
+        picker.title = title .. (incomplete and " · Partial Java LSP results" or "") .. " · Test paths last"
         picker:find()
       end))
-      picker = show(items, title .. " · 正在查询 Java LSP", false)
+      picker = show(items, title .. " · Querying Java LSP", false)
       if picker then
         picker.opts.on_close = function()
           if timer:is_closing() then return end

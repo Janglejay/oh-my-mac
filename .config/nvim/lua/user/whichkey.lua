@@ -37,7 +37,6 @@ which_key.add({
   { "<leader>gL", desc = "Annotate File" },
   { "<leader>gs", desc = "Stage Hunk" },
   { "<leader>gu", desc = "Undo Stage Hunk" },
-  { "<leader>gR", desc = "Reset File Changes" },
   { "<leader>gf", desc = "Open in Fork" },
   { "<leader>lr", desc = "Reload Project" },
   { "<leader>lR", desc = "Rebuild Index" },
@@ -48,7 +47,11 @@ vim.keymap.set("n", "<leader>gl", function() require("gitsigns").blame_line() en
   { silent = true, desc = "Annotate Line" })
 vim.keymap.set("n", "<leader>gL", function() require("gitsigns").blame() end,
   { silent = true, desc = "Annotate File" })
-for key, action in pairs({ gs="stage_hunk", gu="undo_stage_hunk", gR="reset_buffer" }) do
+for key, action in pairs({ gs="stage_hunk", gu="undo_stage_hunk" }) do
   vim.keymap.set("n", "<leader>" .. key, function() require("gitsigns")[action]() end,
     { silent = true, desc = ({ gs="Stage Hunk", gu="Undo Stage Hunk", gR="Reset File Changes" })[key] })
 end
+vim.keymap.set("n", "mR", function() require("user.git_reset").reset() end,
+  { silent = true, desc = "Revert File Changes" })
+vim.keymap.set("n", "mB", function() require("user.git_reset").abort_merge() end,
+  { silent = true, desc = "Abort Merge" })

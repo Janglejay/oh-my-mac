@@ -80,7 +80,7 @@ local function lsp_keymaps(bufnr)
     local bufnr = vim.api.nvim_get_current_buf()
     local method = "textDocument/definition"
     if #vim.lsp.get_clients({ bufnr = bufnr, method = method }) == 0 then
-      vim.notify("LSP 未连接，请等待 Lathe 就绪", vim.log.levels.WARN)
+      vim.notify("LSP is not connected. Wait for Lathe to be ready", vim.log.levels.WARN)
       return
     end
 
@@ -92,12 +92,12 @@ local function lsp_keymaps(bufnr)
       changedtick = vim.api.nvim_buf_get_changedtick(bufnr),
     }
     goto_requests[bufnr] = request
-    vim.api.nvim_echo({ { "  gd 查询中...", "Comment" } }, false, {})
+    vim.api.nvim_echo({ { "  gd: Looking up definition...", "Comment" } }, false, {})
     request.timer = vim.defer_fn(function()
       if goto_requests[bufnr] ~= request then return end
       cancel_goto(bufnr)
       vim.api.nvim_echo({ { "" } }, false, {})
-      vim.notify("gd: 查询超时（30s），可继续操作并稍后重试", vim.log.levels.WARN)
+      vim.notify("gd: The definition request timed out after 30 seconds. Try again later", vim.log.levels.WARN)
     end, 30000)
 
     local function still_here()
@@ -117,7 +117,7 @@ local function lsp_keymaps(bufnr)
       end
     end
     local function missing_definition()
-      vim.notify("gd: 未找到光标处符号的定义", vim.log.levels.WARN)
+      vim.notify("gd: No definition found for the symbol under the cursor", vim.log.levels.WARN)
     end
     request.cancel = vim.lsp.buf_request_all(bufnr, method, function(client)
       -- 按各客户端的位置编码生成参数，避免中文前缀导致列号偏移。
@@ -133,7 +133,7 @@ local function lsp_keymaps(bufnr)
         for client_id, response in pairs(results) do
           local err = response.err or response.error
           if err then
-            error_message = err.message or "语言服务查询失败"
+            error_message = err.message or "Language server request failed"
           else
             successful = true
             local result = response.result
@@ -156,7 +156,7 @@ local function lsp_keymaps(bufnr)
         end
         if not successful then
           cancel_goto(bufnr)
-          vim.notify("gd: " .. (error_message or "语言服务已断开"), vim.log.levels.WARN)
+          vim.notify("gd: " .. (error_message or "Language server disconnected"), vim.log.levels.WARN)
           return
         end
 
@@ -238,7 +238,7 @@ M.on_attach = function(client, bufnr)
     vim.keymap.set("n", "<Leader>ih", function()
       local enabled = vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr })
       vim.lsp.inlay_hint.enable(not enabled, { bufnr = bufnr })
-      vim.notify("Inlay hints " .. (enabled and "关闭" or "开启"), vim.log.levels.INFO)
+      vim.notify("Inlay hints " .. (enabled and "disabled" or "enabled"), vim.log.levels.INFO)
     end, { noremap = true, silent = true, buffer = bufnr, desc = "Toggle inlay hints" })
   end
 end

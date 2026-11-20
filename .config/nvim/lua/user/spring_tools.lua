@@ -16,12 +16,12 @@ end
 function M.model(ctx)
   local root = ctx.analysis .. "/.lathe"
   local stamp = vim.uv.fs_stat(root .. "/workspace.json")
-  if not stamp then return nil, "Lathe 模型尚未生成" end
+  if not stamp then return nil, "The Lathe project model is not ready" end
   local previous = models[ctx.analysis]
   local marker = ("%d:%d:%d:%d"):format(stamp.ino, stamp.size, stamp.mtime.sec, stamp.mtime.nsec)
   if previous and previous.marker == marker then return previous end
   local w = read(root .. "/workspace.json")
-  if not w then return nil, "无法读取 Lathe 工程模型" end
+  if not w then return nil, "Could not read the Lathe project model" end
   local model = { marker = marker, modules = {}, java_roots = {}, resource_roots = {} }
   local jdk = w.jdk or {}
   local java = jdk.home or ""
@@ -30,7 +30,7 @@ function M.model(ctx)
     local path = java .. relative
     if java ~= "" and vim.uv.fs_stat(path) then system[#system + 1] = path end
   end
-  if #system == 0 then return nil, "Lathe 工程 JDK 缺少可识别的系统库" end
+  if #system == 0 then return nil, "No supported system libraries found in the project JDK" end
 
   local outputs = {}
   for _, entry in ipairs(w.outputs or {}) do
@@ -96,7 +96,7 @@ function M.model(ctx)
         vim.NIL, vim.empty_dict() }
     end
   end
-  if not next(model.modules) then return nil, "Lathe 模型中没有可用源码模块" end
+  if not next(model.modules) then return nil, "No source modules found in the Lathe project model" end
   models[ctx.analysis] = model
   return model
 end
@@ -126,21 +126,21 @@ local function synchronize(state)
   local sent = state.rpc.request("workspace/executeCommand", { command = state.listener, arguments = events },
     vim.schedule_wrap(function(failure)
       state.syncing = false
-      if failure then finish(state, failure.message or "Spring Tools 拒绝了 Lathe classpath"); return end
+      if failure then finish(state, failure.message or "Spring Tools rejected the Lathe classpath"); return end
       state.classpath_sent = true
       finish(state)
     end))
   if not sent then
     state.syncing = false
-    finish(state, "无法发送 Lathe classpath")
+    finish(state, "Could not send the Lathe classpath")
   end
 end
 
 local function launch(ctx, model)
   local dir = vim.fn.stdpath("data") .. "/spring-tools/" .. version
   local jars = vim.fn.globpath(dir, "*-exec.jar", false, true)
-  if #jars ~= 1 then return nil, "缺少 Spring Boot Tools " .. version .. " 的本地语言服务" end
-  if vim.fn.executable(sandbox) ~= 1 then return nil, "Spring Tools 需要 macOS 本地网络隔离" end
+  if #jars ~= 1 then return nil, "Spring Boot Tools " .. version .. " language server is not installed locally" end
+  if vim.fn.executable(sandbox) ~= 1 then return nil, "Spring Tools requires macOS network sandboxing" end
   local java = require("user.lathe_config").runtime_jdk .. "/bin/java"
   local home = ctx.state .. "/spring-tools"
   vim.fn.mkdir(home, "p", 448)
@@ -164,10 +164,10 @@ local function launch(ctx, model)
     end,
     on_exit = vim.schedule_wrap(function()
       if instances[ctx.analysis] == state then instances[ctx.analysis] = nil end
-      finish(state, "Spring Tools 已退出，可查看 " .. home .. "/server.log")
+      finish(state, "Spring Tools exited. See " .. home .. "/server.log")
     end),
   }, { cwd = ctx.source })
-  if not rpc then return nil, "无法启动 Spring Tools" end
+  if not rpc then return nil, "Could not start Spring Tools" end
   state.rpc = rpc
   instances[ctx.analysis] = state
   local uri = vim.uri_from_fname(ctx.source)

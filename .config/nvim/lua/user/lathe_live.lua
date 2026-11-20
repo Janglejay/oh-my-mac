@@ -102,7 +102,7 @@ local function finish(ctx, result)
     if not ctx.attempted then ctx.attempted = signature(ctx) end
     M.last_failure = ctx
     -- Keep failures non-blocking; full output is available on explicit request.
-    vim.api.nvim_echo({ { "Lathe 准备失败；,lr 重试，:LatheLog 查看日志", "WarningMsg" } }, true, {})
+    vim.api.nvim_echo({ { "Lathe setup failed. Press ,lr to retry or run :LatheLog to view the log", "WarningMsg" } }, true, {})
   end
   changed()
 end
@@ -184,7 +184,7 @@ local function ensure_path(name, buf, callback)
     if stopped then return end
     local ok, data = pcall(vim.json.decode, result.stdout or "")
     if not ok or result.code ~= 0 or not data.id then
-      vim.notify("Lathe: Maven 工程识别失败：" .. (ok and data.error or result.stderr or "unknown error"), vim.log.levels.WARN)
+      vim.notify("Lathe: Could not detect the Maven project: " .. (ok and data.error or result.stderr or "unknown error"), vim.log.levels.WARN)
       return
     end
     ctx = M.contexts[data.id]
@@ -239,27 +239,27 @@ function M.log()
 end
 function M.status()
   local ctx = M.context(0) or last_context
-  if not ctx then return "none", "Lathe · 打开 Maven Java 文件自动准备" end
+  if not ctx then return "none", "Lathe · Open a Java file in a Maven project to start" end
   local name = vim.fs.basename(ctx.source)
-  if ctx.status == "preparing" then return "busy", "Lathe 准备模型 · " .. name end
-  if ctx.status == "queued" or ctx.waiting then return "busy", "Lathe 等待准备 · " .. name end
+  if ctx.status == "preparing" then return "busy", "Lathe Preparing project model · " .. name end
+  if ctx.status == "queued" or ctx.waiting then return "busy", "Lathe Waiting to prepare project model · " .. name end
   if ctx.status == "failed" then
-    local state = ctx.ready and "更新失败（旧模型）" or "准备失败"
+    local state = ctx.ready and "Update failed (using previous model)" or "Setup failed"
     local subject = ctx.missing_dependency or name
-    return "error", "Lathe " .. state .. " · " .. subject .. " · ,lr 重试"
+    return "error", "Lathe " .. state .. " · " .. subject .. " · ,lr to retry"
   end
   local cs = vim.lsp.get_clients({ name = "lathe" })
   for _, c in ipairs(cs) do
     if c.config.root_dir == ctx.analysis then
       local releases = ctx.java_releases or { 8 }
       local java = #releases > 0 and "Java " .. table.concat(releases, "/") .. " · " or ""
-      local note = ctx.partial_model and " · 部分索引，Maven 有错误"
-        or (ctx.navigation_only and " · 源码有编译错误" or "")
-      if (ctx.dependency_override_count or 0) > 0 then note = note .. " · 分析依赖覆盖" end
+      local note = ctx.partial_model and " · Partial index (Maven errors)"
+        or (ctx.navigation_only and " · Source compilation errors" or "")
+      if (ctx.dependency_override_count or 0) > 0 then note = note .. " · Dependency overrides active" end
       return c.initialized and "ready" or "busy", "Lathe · " .. java .. name .. note
     end
   end
-  return "none", "Lathe 模型已准备 · " .. name
+  return "none", "Lathe Project model ready · " .. name
 end
 
 function M.check_buffers()

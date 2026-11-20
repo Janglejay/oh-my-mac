@@ -48,7 +48,7 @@ tar -xzf /tmp/codediff-v4.0.8.tar.gz --strip-components=1 -C "$HOME/.local/share
 | `ml` / `mr` | Resolve using Left / Right | 当前冲突块，按实际屏幕左右判断 |
 | `ma` | Accept Both | 当前块保留双方 |
 | `mu` | Reset to Base | 当前块恢复祖先，重新变为未解决 |
-| `mL` / `mR` / `mA` / `mU` | 整文件接受左/右/双方/还原 | 确认后执行；还原包含已处理块，其余只处理未解决块 |
+| `mL` / `mT` / `mA` / `mU` | 整文件接受左/右/双方/还原 | 确认后执行；还原包含已处理块，其余只处理未解决块 |
 | `mz` / `mZ` | Undo / Redo | 中间 Result 的编辑历史 |
 | `u` / `Ctrl+r` | Undo / Redo | 同样作用于 Result，支持次数并限制初始边界 |
 | `Ctrl+d` / `Ctrl+f` | Next / Previous Change | 当前文件全部变更：未处理/已处理冲突、自动合并与手工修改；首尾停止，不自动切文件 |
@@ -91,7 +91,7 @@ flowchart LR
 
 保存失败或暂存失败保留视图供重试；保存成功但暂存失败时，磁盘已保存，不能声称保存已回滚。关闭未完成视图会提示，默认取消；原生未保存结果仍保留 Discard/Cancel 守卫。
 
-本入口不执行 commit、merge --continue、rebase --continue 或 abort。Undo/Redo 只撤销 Result 编辑，不能撤回已完成的 Git 暂存，也不能恢复 Git 三阶段索引。
+`mB` 经确认后执行 Git merge --abort；`mR` 经确认后按当前比较基准回滚所选文件及暂存状态。合并视图以 `HEAD` 为基准。顶部确认框中按 `Y` 执行，按 `N` 或 `Esc` 取消。合并完成入口不执行 commit、merge --continue 或 rebase --continue。Undo/Redo 只撤销 Result 编辑，不能撤回已完成的 Git 暂存，也不能恢复 Git 三阶段索引。
 
 ## 配置职责与验证
 

@@ -88,7 +88,7 @@ local function find_call_usages(anchors, title)
       if pending ~= 0 then return end
       if incomplete then title = title .. " · Partial LSP results" end
       if #items > 0 then require("user.navigation").usage_items(title, items)
-      else vim.notify("Lathe: 当前索引未能返回引用", vim.log.levels.WARN) end
+      else vim.notify("Lathe: The current index returned no references", vim.log.levels.WARN) end
     end)
   end
   for _, anchor in pairs(anchors) do
@@ -137,9 +137,9 @@ local function show_bytecode(class, lines, row, anchor)
   vim.api.nvim_win_set_cursor(0, { row, 0 })
   vim.keymap.set("n", "gr", function()
     if vim.api.nvim_win_get_cursor(0)[1] ~= row then
-      vim.notify("请在已定位的声明行查询引用", vim.log.levels.WARN)
+      vim.notify("Place the cursor on the resolved declaration to find references", vim.log.levels.WARN)
     elseif not find_call_usages({ anchor }, "Find Usages — " .. anchor.symbol) then
-      vim.notify("引用查询位置已变化，请从项目调用处重新跳转", vim.log.levels.WARN)
+      vim.notify("The reference lookup location changed. Reopen the declaration from a call site in the project", vim.log.levels.WARN)
     end
   end, { buffer = buf, nowait = true, desc = "Find usages of the resolved JAR symbol" })
   vim.notify("JAR bytecode · " .. class, vim.log.levels.INFO)
