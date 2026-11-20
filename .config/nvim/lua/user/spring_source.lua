@@ -126,6 +126,7 @@ end
 function M.read(path)
   local source = contents(path)
   if not source then return end
+  local registration_calls = type(source) == "number" or source:find("register", 1, true) or source:find("getBean", 1, true)
   local ok, root = pcall(function()
     local parser = type(source) == "number" and vim.treesitter.get_parser(source, "java")
       or vim.treesitter.get_string_parser(source, "java")
@@ -220,9 +221,6 @@ function M.read(path)
     local row, col = id:start()
     local fact = { kind = kind, file = path, pos = { row + 1, col }, id = text(id, source),
       type = type_node and raw_type(type_node), profiles = groups, spans = { { id:range() } } }
-    if type_node and kind == "injection" then
-      fact.spans[#fact.spans + 1] = { type_node:range() }
-    end
     local qualifier = anns.Qualifier
     if qualifier then
       fact.qualifier = qualifier.names[1]
@@ -351,7 +349,7 @@ function M.read(path)
               end
             end
         end
-        if kind == "method_declaration" then
+        if registration_calls and kind == "method_declaration" then
           registration.scan(c, all, source, raw_type, append, member_profiles, fqn)
         end
       elseif java_types[kind] then class(c, fqn, groups) end

@@ -138,15 +138,15 @@ Mapper XML 中，`gd` 可跳到 `resultMap`、`extends` 和 `include refid` 对�
 
 在普通 Java DTO 的字段声明上按 `gd` 或 `gr`，可查看普通引用及能静态确认的 Lombok 构造器实参。选中结果会定位到对应参数。Spring 导航先核对 Bean 注册，再处理普通类上的构造器注入候选。
 
-Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 捕获的 Maven 模块、源码根、编译 classpath 和项目 JDK。Lathe 继续提供 Java 定义与引用，Spring Tools 提供 Bean 符号。macOS 上 Spring 服务在本地网络隔离中运行。
+Java Spring 导航使用 Lathe 捕获的 Maven 模块、源码根、编译 classpath 和项目 JDK。先从源码解析 Bean 关系，按需用 Spring Boot Language Server 的可用符号补充。字段和参数的 Java 类型名由 Lathe 处理。macOS 上 Spring 服务在本地网络隔离中运行。
 
-- 在构造器、`@Autowired`、`@Resource` 或 `@Bean` 参数的注入点按 `gd` 跳到 Bean。Lombok 隐式构造器的注入点显示在对应字段上。构造器选取遵循可静态确认的签名和 `onConstructor`，只在 `lombok.config` 声明复制 `@Qualifier` 时把字段限定符用于生成的参数。
+- 在注入字段名、构造器或 `@Bean` 的注入参数名、`@Qualifier` 或 `@Resource` 的名称上按 `gd` 跳到 Bean。Lombok 隐式构造器的注入点显示在对应字段上。构造器选取遵循可静态确认的签名和 `onConstructor`，只在 `lombok.config` 声明复制 `@Qualifier` 时把字段限定符用于生成的参数。
 - 在 Spring XML 的 `ref`、`depends-on`、`parent`、`factory-bean` 或别名上按 `gd` 跳到 Bean，从 `class` 跳到工程里的 Java 声明。XML 范围由 Lathe 捕获的 Maven 资源根决定。
 - 在 Bean 类名、工厂方法名、XML `id` 或注册名称上按 `gr` 反查能唯一确认的注入点和配置引用。有多个静态候选时，`gd` 会打开候选列表。测试路径排在最后。
 - `:SpringProfiles dev` 或 `:SpringProfiles dev,local` 为当前工程选择导航用的 Profile。`:SpringProfiles` 查看当前选择，`:SpringProfiles!` 恢复 `SPRING_PROFILES_ACTIVE` 或 Spring 的 `default`。支持字符串 `@Profile` 及 `!`、`&`、`|` 组合。Profile 在当前 Neovim 会话生效。
 - 程序化配置支持类字面量 `@Import`、Spring 回调里的固定名称 `registerSingleton` 和 `registerBeanDefinition`，以及同一方法内可追踪的独立 Spring 容器的 `registerBean`、`registerAlias` 和 `getBean`。动态 Bean 名、外部配置值及需执行分支或自定义工厂才能确定的目标仍需运行时信息。
 
-本机依赖 [Spring Boot Tools](https://marketplace.visualstudio.com/items?itemName=vmware.vscode-spring-boot) 2.4.1。下载对应 VSIX 后，将包内 `extension/language-server/` 的内容（含 `lib/`）放到 `stdpath('data') .. '/spring-tools/2.4.1'`，默认路径为 `~/.local/share/nvim/spring-tools/2.4.1/`。首次 Bean 查询需等待各模块完成索引。
+Spring 符号补充使用 [Spring Boot Tools](https://marketplace.visualstudio.com/items?itemName=vmware.vscode-spring-boot) 2.4.1。下载对应 VSIX 后，将包内 `extension/language-server/` 的内容（含 `lib/`）放到 `stdpath('data') .. '/spring-tools/2.4.1'`，默认路径为 `~/.local/share/nvim/spring-tools/2.4.1/`。前台 Bean 查询最多等待约 3 秒，届时未解析的 Java 请求交回普通 Java 导航。
 
 #### 1.2 搜索体系
 
@@ -168,6 +168,8 @@ Java Spring 导航按需启动 Spring Boot Language Server，直接复用 Lathe 
 | `F` | AceJump Treesitter 选择 | - |
 
 `gn` 跳到配对括号。Visual 模式下保留选区起点，将选区扩展到配对位置，支持字符、行和块选择。
+
+标签上的绿点表示缓冲区有未保存修改。普通 UTF-8 文件的内容手动恢复到与磁盘完全一致后，绿点会自动消失。比较保留换行格式和 BOM 信息，特殊缓冲区及其他编码继续使用 Neovim 的修改标记。
 
 **文本对象**（Visual/Operator 模式）：
 - `af` / `if`：方法外部/内部

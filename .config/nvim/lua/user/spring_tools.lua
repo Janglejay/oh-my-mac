@@ -74,10 +74,6 @@ function M.model(ctx)
           local owner = outputs[path]
           if not owner then owner = outputs[vim.uv.fs_realpath(path) or path] end
           if owner and owner ~= key then module.upstream[owner] = true end
-          local name = vim.fs.basename(path)
-          if vim.startswith(name, "spring-core") or vim.startswith(name, "spring-boot") then
-            module.spring = module.spring or vim.uv.fs_stat(path) ~= nil
-          end
           add({ kind = "binary", path = path, isTest = test })
         end
       end
@@ -140,14 +136,6 @@ local function synchronize(state)
   end
 end
 
-function M.index_ready(state)
-  if not state.classpath_sent then return false end
-  for _, module in pairs(state.model.modules) do
-    if module.spring and not state.indexed[module.project] then return false end
-  end
-  return true
-end
-
 local function launch(ctx, model)
   local dir = vim.fn.stdpath("data") .. "/spring-tools/" .. version
   local jars = vim.fn.globpath(dir, "*-exec.jar", false, true)
@@ -156,7 +144,7 @@ local function launch(ctx, model)
   local java = require("user.lathe_config").runtime_jdk .. "/bin/java"
   local home = ctx.state .. "/spring-tools"
   vim.fn.mkdir(home, "p", 448)
-  local state = { model = model, pending = {}, documents = {}, indexed = {} }
+  local state = { model = model, pending = {}, documents = {} }
   local rpc = vim.lsp.rpc.start({
     sandbox, "-p", "(version 1)(allow default)(deny network*)", java,
     "-Xmx1g", "-Duser.home=" .. home, "-Dsts.lsp.client=vscode", "-Dspring.main.web-application-type=none",
@@ -173,11 +161,6 @@ local function launch(ctx, model)
         return { { uri = vim.uri_from_fname(ctx.source), name = vim.fs.basename(ctx.source) } }
       end
       return vim.NIL
-    end,
-    notification = function(method, params)
-      if method == "spring/index/updated" then
-        for _, project in ipairs(params.affectedProjects or {}) do state.indexed[project] = true end
-      end
     end,
     on_exit = vim.schedule_wrap(function()
       if instances[ctx.analysis] == state then instances[ctx.analysis] = nil end

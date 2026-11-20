@@ -55,4 +55,6 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold" }, {
 -- 保留保存前格式化保护；后端精简不改变此规则。
 vim.lsp.handlers["textDocument/willSaveWaitUntil"] = function() end
 
+require("user.saved_buffer_state").setup()
+
 -- Directory buffers are handled by Snacks Explorer.
