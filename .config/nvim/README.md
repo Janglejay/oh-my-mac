@@ -113,7 +113,7 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 公开发行包解压到 `~/.local/share/nvim/lazy/snacks.nvim`，由本地dir加载，无Git remote；该版本由本节固定，不由lazy-lock锁定。新机器应先从[固定commit发行包](https://codeload.github.com/folke/snacks.nvim/tar.gz/e6fd58c82f2f3fcddd3fe81703d47d6d48fc7b9f)安装到此目录。
 
 - `,f` 项目符号、`,F` 全文、`,e` 项目最近文件、`,b` buffer、`gr/gi` 引用与实现均有源码预览。Java `,f`保留已保存类型/方法扫描；字段和未保存覆盖不是本轮新增能力。
-- Neovide 无参数启动时恢复最近项目的根目录和文件。`gw` 在同一应用里进入所选项目的新窗口，优先打开该项目最近访问的文件。`,p` / `,P` 打开目录树并定位当前文件。项目树 Git 颜色显示工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
+- Neovide 无参数启动时恢复最近项目的根目录和文件。`gw` 在同一窗口切换项目。已经打开的项目会复用原编辑页，新项目才会新建编辑页并优先打开最近访问的文件。`,p` / `,P` 打开目录树并定位当前文件。项目树 Git 颜色显示工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
 - `st` / Ctrl+反斜杠显隐底部终端，保留会话、尺寸和Esc/jk；`,c/,C`关闭buffer保留窗口布局。关闭未保存buffer会询问，不强制丢弃。
 - Which-key主菜单聚焦搜索、文件、Git、Java、HTTP与Problems；重复的`,S*`和次要LSP别名仍可使用，不在主菜单展示；Merge专用m菜单只在合并上下文出现。
 
@@ -260,10 +260,15 @@ Spring 符号补充使用 [Spring Boot Tools](https://marketplace.visualstudio.c
 | `sq` | 关闭窗口 |
 | `<Leader>w` | 最大化当前拆分/恢复原布局 |
 | `<Leader><Arrow>` | 调整窗口大小 |
-| `gw` | 在同一 Neovide 应用中新建项目窗口并打开所选项目的最近文件 |
+| `gw` | 在当前窗口切换项目，复用已打开的项目编辑页 |
 | `<Leader>p` | 打开项目目录树并定位当前文件 |
+| `z`（Explorer） | 递归展开光标所在目录的可见子目录，已全部展开时收起这棵子树。在文件上操作其父目录，项目根目录由 `Z` 控制 |
+| `Z`（Explorer） | 已有展开的目录时全部收起，否则递归展开可见目录 |
+| `J` / `K`（Explorer） | 跳到下方／上方最近的目录行，跳过文件 |
 | `<Leader>P` | 定位当前文件 |
 | `st` | 打开终端 |
+
+Explorer 会把展开后只有一个可见子目录的连续层级合并成点分名称。有文件或多个子目录的分支仍分开显示，搜索结果保留原始层级。
 
 ### 7. 书签与跳转记录
 
@@ -316,7 +321,7 @@ Spring 符号补充使用 [Spring Boot Tools](https://marketplace.visualstudio.c
 【窗口】
   gh/j/k/l  窗口导航
   <Leader>w  最大化当前拆分/恢复布局
-  gw   切换项目（同一应用中的新窗口）
+  gw   切换项目（复用当前窗口中的项目编辑页）
   <Leader>p  项目文件树
 ```
 

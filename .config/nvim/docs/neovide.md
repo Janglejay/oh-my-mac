@@ -16,12 +16,14 @@ Neovide 没有另一套项目模型；“打开项目”就是切换 Neovim 的�
 | --- | --- | --- |
 | 新建文件 | `Cmd+N` | 新建未命名 Neovim buffer；`Cmd+S` 时按现有 Save As 流程命名。 |
 | 打开当前项目文件 | `Cmd+O` 或 `Cmd+P` | 在当前项目根目录打开模糊文件选择。 |
-| 切换到已知项目 | `gw` | 在同一个 Neovide 应用中新建窗口，优先打开所选项目最近访问的文件。没有访问记录时尝试 README、构建文件或项目里的文本文件。 |
+| 切换到已知项目 | `gw` | 在同一个 Neovide 窗口切换项目。已打开的项目直接切回原编辑页，新项目优先打开最近访问的文件。没有访问记录时尝试 README、构建文件或项目里的文本文件。 |
 | 打开任意项目目录 | `Cmd+Shift+O` | 输入或粘贴项目目录；目录存在后在当前窗口切换 cwd，并立即显示该项目的文件选择。 |
 | 当前项目目录树 | `,p` | 在当前窗口显示/定位 Snacks Explorer。 |
 | 命令面板 | `Cmd+Shift+P` | 搜索并执行 Neovim 命令。 |
 | 新 Neovide 窗口 | `Cmd+Shift+N` | Neovide 原生新窗口；也可用 `Window > New Window`。 |
 | 从终端新开项目窗口 | `neovide --reuse-instance --new-window --chdir /absolute/path/to/project` | 在已有应用中新建窗口。 |
+
+`gw` 使用 Neovim 内部编辑页。若 Neovide 仍显示额外的 macOS 原生标签栏，可在 `~/.config/neovide/config.toml` 设置 `system-native-tabs = false`。
 
 上述 `Cmd` 映射只在 Neovide 生效。Neovide 只转发按键、不自带编辑器快捷键；映射由 `lua/user/neovide.lua` 定义。修改 `config.toml` 后请退出并重新打开 Neovide。
 

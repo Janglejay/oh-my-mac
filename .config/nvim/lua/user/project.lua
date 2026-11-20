@@ -128,6 +128,9 @@ local function candidate_roots()
   local cwd = vim.fn.getcwd()
   add(cwd)
   add(vim.api.nvim_buf_get_name(0))
+  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+    add(vim.t[tab].switch_project_root)
+  end
   for _, file in ipairs(history()) do add(file) end
   table.sort(roots, function(a, b)
     if (a == cwd) ~= (b == cwd) then return a == cwd end
@@ -136,25 +139,65 @@ local function candidate_roots()
   return roots
 end
 
----Build a command separately so it can be inspected without opening a GUI.
----@param root string
----@return string[]
-function M.neovide_command(root)
-  local command = { "neovide", "--reuse-instance", "--new-window", "--fork", "--chdir", root }
-  local file = project_file(root)
-  if file then command[#command + 1] = file end
-  return command
+local function set_tab_root(root)
+  if vim.fn.getcwd(-1, 0) ~= root or vim.fn.haslocaldir(-1, 0) ~= 2 then
+    -- Snacks listens for DirChanged in every open Explorer, including other tabs.
+    vim.cmd.tcd({ args = { root }, magic = { file = false, bar = false }, mods = { noautocmd = true } })
+    if package.loaded["snacks.picker"] then
+      for _, explorer in ipairs(Snacks.picker.get({ source = "explorer" })) do
+        if explorer:cwd() ~= root then
+          explorer:set_cwd(root)
+          explorer:find()
+        end
+      end
+    end
+    local lathe = package.loaded["user.lathe_live"]
+    if lathe then lathe.ensure_directory(root) end
+  end
 end
 
-function M.open_in_neovide(root)
-  local ok, err = pcall(vim.system, M.neovide_command(root), { detach = true }, function(result)
-    if result.code ~= 0 then
-      vim.schedule(function()
-        vim.notify("Switch Project: Neovide could not open " .. root, vim.log.levels.ERROR)
-      end)
+local function focus_project_tab(tab)
+  if vim.api.nvim_get_current_tabpage() == tab then return end
+  -- Switching tab-local directories emits DirChanged even without a :tcd call.
+  local ignored = vim.o.eventignore
+  vim.opt.eventignore:append("DirChanged")
+  local ok, err = pcall(vim.api.nvim_set_current_tabpage, tab)
+  vim.o.eventignore = ignored
+  if not ok then error(err) end
+end
+
+local function open_project(root)
+  local tabs = vim.api.nvim_list_tabpages()
+  local current = vim.api.nvim_get_current_tabpage()
+  -- Match canonical paths, so separate worktrees of the same repo stay separate.
+  for _, tab in ipairs(tabs) do
+    if vim.t[tab].switch_project_root == root then
+      focus_project_tab(tab)
+      set_tab_root(root)
+      return
     end
-  end)
-  if not ok then vim.notify("Switch Project: " .. tostring(err), vim.log.levels.ERROR) end
+  end
+  table.insert(tabs, 1, current)
+  local diff = package.loaded["codediff.ui.lifecycle"]
+  for _, tab in ipairs(tabs) do
+    if not vim.t[tab].switch_project_root and not (diff and diff.get_session(tab)) then
+      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.bo[buf].buftype == "" and M.find_project_root(vim.api.nvim_buf_get_name(buf)) == root then
+          focus_project_tab(tab)
+          vim.t.switch_project_root = root
+          set_tab_root(root)
+          vim.api.nvim_set_current_win(win)
+          return
+        end
+      end
+    end
+  end
+  local file = project_file(root)
+  vim.cmd.tabnew()
+  vim.t.switch_project_root = root
+  set_tab_root(root)
+  if file then vim.cmd.edit({ args = { file }, magic = { file = false, bar = false } }) end
 end
 
 function M.switch()
@@ -173,7 +216,7 @@ function M.switch()
     }
   end
   Snacks.picker({
-    title = "Switch Project — Enter opens a new Neovide window",
+    title = "Switch Project",
     items = items,
     preview = "none",
     layout = { preset = "select", preview = false },
@@ -187,7 +230,7 @@ function M.switch()
     actions = {
       confirm = function(picker, item)
         picker:close()
-        if item then M.open_in_neovide(item.root) end
+        if item then open_project(item.root) end
       end,
     },
   })
@@ -212,8 +255,19 @@ function M.root(bufnr)
 end
 
 function M.update(bufnr)
+  local project = vim.t.switch_project_root
+  if project then
+    set_tab_root(project)
+    return project
+  end
   local root = M.root(bufnr)
-  if root and vim.fn.getcwd() ~= root then vim.api.nvim_set_current_dir(root) end
+  if root then
+    if vim.g.neovide then
+      set_tab_root(root)
+    elseif vim.fn.getcwd() ~= root then
+      vim.api.nvim_set_current_dir(root)
+    end
+  end
   return root
 end
 
@@ -234,7 +288,7 @@ function M.setup()
   vim.api.nvim_create_user_command("ProjectRoot", function() M.update(0) end,
     { desc = "Set current project root", force = true })
   vim.api.nvim_create_user_command("SwitchProject", M.switch,
-    { desc = "Open a known project in a Neovide window", force = true })
+    { desc = "Switch to a known project in the current window", force = true })
 end
 
 return M

@@ -34,7 +34,7 @@ keymap("n", "<Leader>j", "*", opts)        -- 搜索当前词
 keymap("n", "<Leader>k", "#", opts)        -- 反向搜索
 keymap("n", "W", "b", opts)                -- W 跳词
 keymap("n", "zc", "zz", opts)
-keymap("n", "zz", "zc", opts)
+keymap("n", "zz", "za", opts)
 keymap("n", "zZ", "zM", opts)
 keymap("n", "zO", "zR", opts)
 
