@@ -84,13 +84,18 @@ local function lsp_keymaps(bufnr)
       return
     end
 
-    local navigation = require("user.navigation")
-    cancel_goto(bufnr)
     local request = {
       winid = vim.api.nvim_get_current_win(),
       cursor = vim.api.nvim_win_get_cursor(0),
       changedtick = vim.api.nvim_buf_get_changedtick(bufnr),
     }
+    local pending = goto_requests[bufnr]
+    if pending and pending.winid == request.winid and pending.changedtick == request.changedtick
+        and vim.deep_equal(pending.cursor, request.cursor) then
+      return
+    end
+    local navigation = require("user.navigation")
+    cancel_goto(bufnr)
     goto_requests[bufnr] = request
     vim.api.nvim_echo({ { "  gd: Looking up definition...", "Comment" } }, false, {})
     request.timer = vim.defer_fn(function()
@@ -140,15 +145,16 @@ local function lsp_keymaps(bufnr)
             local locations = type(result) == "table" and result or {}
             if locations.uri or locations.targetUri then locations = { locations } end
             local client = vim.lsp.get_client_by_id(client_id)
+            local encoding = client and client.offset_encoding or "utf-16"
             for _, location in ipairs(locations) do
               local uri = location.uri or location.targetUri
               local range = location.targetSelectionRange or location.range or location.targetRange
               if uri and range then
-                local key = uri .. ":" .. range.start.line .. ":" .. range.start.character
+                  local key = encoding .. ":" .. uri .. ":" .. range.start.line .. ":" .. range.start.character
                 if not seen[key] then
                   seen[key] = true
                   defs[#defs + 1] = location
-                  encodings[#defs] = client and client.offset_encoding or "utf-16"
+                    encodings[#defs] = encoding
                 end
               end
             end
@@ -194,7 +200,7 @@ local function lsp_keymaps(bufnr)
         elseif #defs == 1 then
           show_definition(defs[1], encodings[1])
         else
-          navigation.definitions()
+          navigation.definitions(defs, encodings)
         end
       end)
     end)

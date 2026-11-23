@@ -1,5 +1,49 @@
 local M = {}
 local accessor_anchors = {}
+local bytecode_cache, bytecode_order = {}, {}
+
+local function file_version(path)
+  local s = vim.uv.fs_stat(path)
+  if not s then return end
+  return table.concat({ s.dev, s.ino, s.size, s.mtime.sec, s.mtime.nsec, s.ctime.sec, s.ctime.nsec }, ":")
+end
+
+-- Cache the disassembly, not the resolved symbol: Lathe still attributes every call.
+local function disassemble(jdk, jar, class, callback)
+  local javap = jdk .. "/bin/javap"
+  local function versions()
+    local binary, tool, modules = file_version(jar), file_version(javap), file_version(jdk .. "/lib/modules")
+    return binary and tool and modules and table.concat({ binary, tool, modules }, "/") or nil
+  end
+  local key = table.concat({ javap, jar, class }, "\0")
+  local cancelled, job
+  vim.schedule(function()
+    if cancelled then return end
+    local version = versions()
+    local hit = bytecode_cache[key]
+    if version and hit and hit.version == version then
+      callback(hit.output)
+      return
+    end
+    job = vim.system({ javap, "-p", "-c", "-classpath", jar, class },
+      { text = true, timeout = 5000 }, vim.schedule_wrap(function(output)
+        job = nil
+        if cancelled then return end
+        if output.code == 0 and version and versions() == version and #(output.stdout or "") <= 256 * 1024 then
+          if not bytecode_cache[key] then
+            bytecode_order[#bytecode_order + 1] = key
+            if #bytecode_order > 24 then bytecode_cache[table.remove(bytecode_order, 1)] = nil end
+          end
+          bytecode_cache[key] = { version = version, output = output }
+        end
+        callback(output)
+      end))
+  end)
+  return function()
+    cancelled = true
+    if job then pcall(job.kill, job, 15) end
+  end
+end
 
 local function node_text(node, source)
   return vim.treesitter.get_node_text(node, source)
@@ -196,7 +240,7 @@ local function resolve_class(client, node, bufnr, winid, done)
   local anchor = { bufnr = bufnr, client_id = client.id, symbol = name,
     changedtick = vim.api.nvim_buf_get_changedtick(bufnr),
     params = vim.tbl_extend("force", params, { context = { includeDeclaration = false } }) }
-  local cancelled, job = false, nil
+  local cancelled, cancel_bytecode = false, nil
   local sent, id = client:request("textDocument/hover", params, function(err, result)
     if cancelled then return end
     local group, artifact, version = M.hover_artifact(result)
@@ -209,9 +253,8 @@ local function resolve_class(client, node, bufnr, winid, done)
     local options = require("user.lathe_config")
     local jar = binary_jar(vim.fs.joinpath(options.resources, "vim-trial", "m2"), group, artifact, version)
     if not jar then done(); return end
-    job = vim.system({ options.runtime_jdk .. "/bin/javap", "-p", "-c", "-classpath", jar, class },
-      { text = true, timeout = 5000 }, vim.schedule_wrap(function(output)
-        job = nil
+    cancel_bytecode = disassemble(options.runtime_jdk, jar, class, function(output)
+        cancel_bytecode = nil
         if cancelled then return end
         if output.code ~= 0 then done(); return end
         local lines = vim.split(vim.trim(output.stdout or ""), "\n", { plain = true })
@@ -222,13 +265,13 @@ local function resolve_class(client, node, bufnr, winid, done)
           end
         end
         done()
-      end))
+      end)
   end, bufnr)
   if not sent then return end
   return function()
     cancelled = true
     client:cancel_request(id)
-    if job then pcall(job.kill, job, 15) end
+    if cancel_bytecode then cancel_bytecode() end
   end
 end
 
@@ -256,7 +299,7 @@ function M.resolve(client, bufnr, winid, done)
   local at_receiver = { textDocument = params.textDocument, position = {
     line = row, character = vim.str_utfindex(text, client.offset_encoding, col),
   } }
-  local cancelled, ids, job = false, {}, nil
+  local cancelled, ids, cancel_bytecode = false, {}, nil
   local function request(name, at, callback)
     local sent, id = client:request("textDocument/" .. name, at, function(err, result)
       if not cancelled then
@@ -277,9 +320,8 @@ function M.resolve(client, bufnr, winid, done)
       local options = require("user.lathe_config")
       local jar = binary_jar(vim.fs.joinpath(options.resources, "vim-trial", "m2"), group, artifact, version)
       if not jar then done(); return end
-      job = vim.system({ options.runtime_jdk .. "/bin/javap", "-p", "-c", "-classpath", jar, class },
-        { text = true, timeout = 5000 }, vim.schedule_wrap(function(output)
-          job = nil
+      cancel_bytecode = disassemble(options.runtime_jdk, jar, class, function(output)
+          cancel_bytecode = nil
           if cancelled then return end
           if output.code ~= 0 then done(); return end
           local lines = vim.split(vim.trim(output.stdout or ""), "\n", { plain = true })
@@ -310,13 +352,13 @@ function M.resolve(client, bufnr, winid, done)
             end
             done(nil, show_binary)
           end)
-        end))
+        end)
     end)
   end)
   return function()
     cancelled = true
     for _, id in ipairs(ids) do client:cancel_request(id) end
-    if job then pcall(job.kill, job, 15) end
+    if cancel_bytecode then cancel_bytecode() end
   end
 end
 

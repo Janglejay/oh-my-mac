@@ -382,6 +382,15 @@ function M.run(go, fallback)
   local buf = vim.api.nvim_get_current_buf()
   local ft = vim.bo[buf].filetype
   if (ft ~= "java" and ft ~= "xml") or vim.bo[buf].buftype ~= "" then return false end
+  if ft == "java" then
+    local ok, node = pcall(vim.treesitter.get_node, { bufnr = buf })
+    local call = ok and node and node:parent()
+    -- Spring facts cover declarations and registration/lookup arguments, never a call's method name.
+    if call and call:type() == "method_invocation" then
+      local name = call:field("name")[1]
+      if name and name:equal(node) then return false end
+    end
+  end
   local ctx = require("user.lathe_live").context(buf)
   if not ctx or not ctx.ready then return false end
   local file = vim.api.nvim_buf_get_name(buf)

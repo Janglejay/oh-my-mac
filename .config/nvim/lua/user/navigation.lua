@@ -177,8 +177,38 @@ function M.references(skip_spring)
   }))
 end
 
-function M.definitions()
+function M.definitions(locations, encodings)
+  local lsp = require("snacks.picker.source.lsp")
+  local origin = vim.fs.normalize(vim.api.nvim_buf_get_name(0))
+  local row = vim.fn.line(".")
+  local buffers = lsp.bufmap()
+  local items, by_encoding, seen = {}, {}, {}
+  for i, location in ipairs(locations) do
+    local encoding = encodings[i]
+    by_encoding[encoding] = by_encoding[encoding] or {}
+    table.insert(by_encoding[encoding], location)
+  end
+  for encoding, group in pairs(by_encoding) do
+    local entries = vim.lsp.util.locations_to_items(group, encoding)
+    lsp.fix_locs(entries)
+    for _, entry in ipairs(entries) do
+      local same_line = vim.fs.normalize(entry.filename) == origin
+        and entry.lnum and entry.lnum <= row and (entry.end_lnum or entry.lnum) >= row
+      local key = ("%s:%d:%d"):format(entry.filename, entry.lnum, entry.col)
+      if not same_line and not seen[key] then
+        seen[key] = true
+        items[#items + 1] = {
+          file = entry.filename, buf = buffers[entry.filename],
+          text = entry.filename .. " " .. entry.text, line = entry.text,
+          pos = { entry.lnum, entry.col - 1 },
+          end_pos = entry.end_lnum and entry.end_col and { entry.end_lnum, entry.end_col - 1 } or nil,
+        }
+      end
+    end
+  end
   return Snacks.picker.lsp_definitions(vim.tbl_deep_extend("force", usage_order, {
+    -- The original query already waited for every attached definition provider.
+    finder = function() return items end,
     title = "Go to Definition · Test paths last", jump = { reuse_win = false },
   }))
 end
