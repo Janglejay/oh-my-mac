@@ -88,6 +88,10 @@ end
 -- 未合并时进入原生状态/三方视图；其余情况按所选 ref tip 比较到工作区。
 -- 默认基准 origin/master，只读解析仓库和引用，不 fetch、不修改工作区。
 function M.open_branch_review()
+  if not require("user.auto_save").flush() then
+    vim.notify("Git Diff: Resolve auto-save errors before opening the diff", vim.log.levels.WARN)
+    return
+  end
   review_request = review_request + 1
   local request = review_request
   local tabpage = vim.api.nvim_get_current_tabpage()

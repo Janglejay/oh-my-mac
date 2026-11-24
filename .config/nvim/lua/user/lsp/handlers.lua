@@ -166,7 +166,7 @@ local function lsp_keymaps(bufnr)
           return
         end
 
-        -- 保留原操作：声明所在行查引用，使用处跳定义。
+        -- Press gd on the declaration name to find usages.
         if #defs == 0 then
           local lathe = vim.lsp.get_clients({ bufnr = bufnr, name = "lathe" })[1]
           local pending = lathe and require("user.java_dependency_navigation").resolve(lathe, bufnr, request.winid,
@@ -187,12 +187,15 @@ local function lsp_keymaps(bufnr)
         cancel_goto(bufnr)
         local at_def = false
         local cur_uri = vim.uri_from_bufnr(bufnr)
-        for _, location in ipairs(defs) do
+        for i, location in ipairs(defs) do
           local range = location.targetSelectionRange or location.range or location.targetRange
           if (location.uri or location.targetUri) == cur_uri
               and range.start.line == request.cursor[1] - 1 then
-            at_def = true
-            break
+            local column = vim.str_byteindex(vim.api.nvim_get_current_line(), encodings[i], range.start.character, false)
+            if navigation.at_definition(range.start.line + 1, column) then
+              at_def = true
+              break
+            end
           end
         end
         if at_def then

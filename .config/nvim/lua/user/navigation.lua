@@ -177,10 +177,24 @@ function M.references(skip_spring)
   }))
 end
 
+function M.at_definition(row, column)
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  if cursor[1] ~= row then return false end
+  if cursor[2] == column then return true end
+  local line = vim.api.nvim_get_current_line()
+  local offset = 0
+  while offset <= math.min(cursor[2], column) do
+    local _, first, last = unpack(vim.fn.matchstrpos(line, [[\k\+]], offset))
+    if first < 0 or first > math.min(cursor[2], column) then return false end
+    if cursor[2] < last then return column < last end
+    offset = last
+  end
+  return false
+end
+
 function M.definitions(locations, encodings)
   local lsp = require("snacks.picker.source.lsp")
   local origin = vim.fs.normalize(vim.api.nvim_buf_get_name(0))
-  local row = vim.fn.line(".")
   local buffers = lsp.bufmap()
   local items, by_encoding, seen = {}, {}, {}
   for i, location in ipairs(locations) do
@@ -192,10 +206,10 @@ function M.definitions(locations, encodings)
     local entries = vim.lsp.util.locations_to_items(group, encoding)
     lsp.fix_locs(entries)
     for _, entry in ipairs(entries) do
-      local same_line = vim.fs.normalize(entry.filename) == origin
-        and entry.lnum and entry.lnum <= row and (entry.end_lnum or entry.lnum) >= row
+      local at_cursor = vim.fs.normalize(entry.filename) == origin
+        and M.at_definition(entry.lnum, entry.col - 1)
       local key = ("%s:%d:%d"):format(entry.filename, entry.lnum, entry.col)
-      if not same_line and not seen[key] then
+      if not at_cursor and not seen[key] then
         seen[key] = true
         items[#items + 1] = {
           file = entry.filename, buf = buffers[entry.filename],
@@ -218,6 +232,67 @@ function M.implementations()
   if not require("user.mybatis_navigation").implementation(picker) then return picker() end
 end
 
+local java_declarations = [[
+  (class_declaration name: (identifier) @Class)
+  (interface_declaration name: (identifier) @Interface)
+  (annotation_type_declaration name: (identifier) @Interface)
+  (enum_declaration name: (identifier) @Enum)
+  (record_declaration name: (identifier) @Record)
+  (method_declaration name: (identifier) @Method)
+  (annotation_type_element_declaration name: (identifier) @Method)
+]]
+
+local function java_symbols(query, ctx)
+  local cwd = ctx:cwd()
+  local files = require("snacks.picker.source.proc").proc(ctx:opts({
+    cmd = "rg", cwd = cwd, notify = false, sep = "\0",
+    args = { "--files", "--null", "-tjava", "--glob", "!**/target/**", "--glob", "!**/.git/**" },
+  }), ctx)
+
+  return function(add)
+    local yield = require("snacks.picker.util.async").yielder()
+    local parsed = 0
+    files(function(item)
+      local file = item.text
+      local path = vim.fs.joinpath(cwd, file)
+      local handle = io.open(path, "rb")
+      if not handle then return end
+      local source = handle:read("*a")
+      handle:close()
+      if not source then return end
+
+      local parser = vim.treesitter.get_string_parser(source, "java")
+      local tree = parser:parse()[1]
+      if tree then
+        local qualified = (("/" .. file):match("/src/[^/]+/java/(.+)%.java$")
+          or file:match("([^/]+)%.java$") or file):gsub("/", ".")
+        for capture, node in query:iter_captures(tree:root(), source) do
+          local kind = query.captures[capture]
+          local name = vim.treesitter.get_node_text(node, source)
+          local row, col = node:start()
+          local symbol = qualified
+          if kind == "Method" then
+            symbol = qualified .. "." .. name .. "()"
+          elseif qualified:match("[^.]+$") ~= name then
+            symbol = qualified .. "." .. name
+          end
+          add({
+            file = path,
+            pos = { row + 1, col },
+            text = symbol,
+            display = string.format("%-36s %-9s ./%s:%d", name, kind, file, row + 1),
+          })
+        end
+      end
+      -- Snacks pauses automatic GC during finding. Release temporary parse
+      -- trees in small batches so a large project cannot retain them all.
+      parsed = parsed + 1
+      if parsed % 32 == 0 then collectgarbage("step", 256) end
+      yield()
+    end)
+  end
+end
+
 function M.project_symbols()
   if vim.bo.filetype ~= "java" then
     if #vim.lsp.get_clients({ bufnr = 0, method = "workspace/symbol" }) > 0 then
@@ -227,35 +302,16 @@ function M.project_symbols()
     end
     return project_files()
   end
+  local ok, query = pcall(vim.treesitter.query.parse, "java", java_declarations)
+  if not ok then
+    vim.notify("Java symbol search requires the Java Tree-sitter parser. Run :TSInstall java.", vim.log.levels.WARN)
+    return project_files()
+  end
   return Snacks.picker({
     title = "Search Everywhere — Classes / Methods" .. search_title_hint,
     pattern = default_scope, transform = mark_path_scope,
     cwd = M.root(), preview = "file",
-    finder = function(_, ctx)
-      return require("snacks.picker.source.proc").proc(ctx:opts({
-        cmd = "rg", cwd = ctx:cwd(), notify = false,
-        args = { "-tjava", "-n", "--no-heading", "--color=never",
-          "-e", "(class|interface|enum|@interface)\\s+\\w+",
-          "-e", "\\s+(public|protected|private)\\s+\\S+\\s+\\w+\\s*\\(",
-          "--glob", "!*/target/*", "--glob", "!*/.git/*", "." },
-        transform = function(item)
-          local file, lnum, content = item.text:match("^(.+):(%d+):(.*)")
-          if not file then return false end
-          local sym = content:match("[Cc]lass%s+(%w+)") or content:match("[Ii]nterface%s+(%w+)")
-            or content:match("[Ee]num%s+(%w+)") or content:match("%s(%w+)%s*%(") or "?"
-          local kind = content:match("class") and "Class" or content:match("interface") and "Interface"
-            or content:match("enum") and "Enum" or "Method"
-          item.file = vim.fs.normalize(ctx:cwd() .. "/" .. file)
-          item.pos = { tonumber(lnum), 0 }
-          local qualified = file:match("/src/[^/]+/java/(.+)%.java$")
-            or file:match("^src/[^/]+/java/(.+)%.java$")
-            or vim.fn.fnamemodify(file, ":t:r")
-          qualified = qualified:gsub("/", ".")
-          item.text = kind == "Method" and (qualified .. "." .. sym .. "()") or qualified
-          item.display = string.format("%-36s %-9s %s:%s", sym, kind, file, lnum)
-        end,
-      }), ctx)
-    end,
+    finder = function(_, ctx) return java_symbols(query, ctx) end,
     format = function(item) return { { item.display } } end,
     jump = { reuse_win = false, jumplist = true },
   })

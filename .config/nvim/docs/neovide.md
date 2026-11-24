@@ -4,9 +4,18 @@ Neovide 0.17.2 作为现有 Neovim 的可选图形界面，使用 `/opt/homebrew
 
 ## 启动
 
-运行 `neovide --reuse-instance /absolute/path/to/project`，或从 Applications 打开 Neovide。命令链接为 `/opt/homebrew/bin/neovide`，应用位于 `/Applications/Neovide.app`。如果希望省略复用参数，可在 `~/.zshrc` 添加 `alias neovide='neovide --reuse-instance'`，然后在现有终端运行 `source ~/.zshrc`。启用 `fork = true` 后，终端会在启动后返回。
+在交互式 Zsh 中用 `vim <项目目录>` 或 `vim <文件>` 打开项目。终端入口为 `nvim -l ~/.config/nvim/scripts/open-project.lua`。不同项目使用独立的 macOS 窗口，同一项目路径复用已有窗口；单独检出的 Git worktree 按各自路径区分。
 
-无参数启动到空窗口时，Neovide 先切换到最近项目的根目录，再打开该项目最近访问的文件。目录树和项目搜索使用这个项目范围。首次没有项目文件历史时，会尝试打开启动目录所属项目里的文件。
+要启用这个终端入口，把以下配置放在 `~/.zshrc` 中原有编辑器别名之后，再重新加载 Zsh 配置。
+
+```zsh
+unalias vim 2>/dev/null || true
+function vim {
+  command nvim -l "${XDG_CONFIG_HOME:-$HOME/.config}/nvim/scripts/open-project.lua" "$@"
+}
+```
+
+无参数运行 `vim` 会聚焦或重新打开最近打开的项目，并在重开时优先恢复最近访问的文件。窗口关闭后立即从 `gw` 列表中移除。
 
 ### 打开文件和项目
 
@@ -16,14 +25,14 @@ Neovide 没有另一套项目模型；“打开项目”就是切换 Neovim 的�
 | --- | --- | --- |
 | 新建文件 | `Cmd+N` | 新建未命名 Neovim buffer；`Cmd+S` 时按现有 Save As 流程命名。 |
 | 打开当前项目文件 | `Cmd+O` 或 `Cmd+P` | 在当前项目根目录打开模糊文件选择。 |
-| 切换到已知项目 | `gw` | 在同一个 Neovide 窗口切换项目。已打开的项目直接切回原编辑页，新项目优先打开最近访问的文件。没有访问记录时尝试 README、构建文件或项目里的文本文件。 |
-| 打开任意项目目录 | `Cmd+Shift+O` | 输入或粘贴项目目录；目录存在后在当前窗口切换 cwd，并立即显示该项目的文件选择。 |
+| 切换已打开的项目 | `gw` | 仅列出存活的项目窗口，选择后聚焦对应窗口。 |
+| 打开任意项目目录 | `Cmd+Shift+O` | 输入或粘贴项目目录；打开独立项目窗口，或聚焦已打开的窗口。 |
 | 当前项目目录树 | `,p` | 在当前窗口显示/定位 Snacks Explorer。 |
 | 命令面板 | `Cmd+Shift+P` | 搜索并执行 Neovim 命令。 |
 | 新 Neovide 窗口 | `Cmd+Shift+N` | Neovide 原生新窗口；也可用 `Window > New Window`。 |
-| 从终端新开项目窗口 | `neovide --reuse-instance --new-window --chdir /absolute/path/to/project` | 在已有应用中新建窗口。 |
+| 从终端打开项目 | `vim /absolute/path/to/project` | 聚焦或新建项目窗口。 |
 
-`gw` 使用 Neovim 内部编辑页。若 Neovide 仍显示额外的 macOS 原生标签栏，可在 `~/.config/neovide/config.toml` 设置 `system-native-tabs = false`。
+原生窗口分离依赖 Neovide 的 `system-native-tabs = false`。
 
 上述 `Cmd` 映射只在 Neovide 生效。Neovide 只转发按键、不自带编辑器快捷键；映射由 `lua/user/neovide.lua` 定义。修改 `config.toml` 后请退出并重新打开 Neovide。
 

@@ -82,10 +82,10 @@ local function open_project()
       vim.notify("Project directory does not exist: " .. directory, vim.log.levels.ERROR)
       return
     end
-    vim.schedule(function()
-      vim.api.nvim_set_current_dir(directory)
-      Snacks.picker.files({ cwd = directory, title = "Open File — " .. vim.fn.fnamemodify(directory, ":~") })
-    end)
+    local launcher = vim.fn.stdpath("config") .. "/scripts/open-project.lua"
+    vim.system({ vim.v.progpath, "-l", launcher, directory }, { text = true }, vim.schedule_wrap(function(result)
+      if result.code ~= 0 then vim.notify(vim.trim(result.stderr), vim.log.levels.ERROR) end
+    end))
   end)
 end
 

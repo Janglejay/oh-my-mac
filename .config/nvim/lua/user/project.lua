@@ -8,10 +8,10 @@ local home = vim.uv.fs_realpath(vim.fn.expand("~"))
 
 local function path_for(value)
   if not value or value == "" then return nil end
-  local path = vim.fn.fnamemodify(vim.fn.expand(value), ":p")
+  if value:match("^%a[%w+.-]*://") then return nil end
+  local path = vim.fn.fnamemodify(value, ":p")
   local stat = vim.uv.fs_stat(path)
-  if not stat then return nil end
-  if stat.type ~= "directory" then path = vim.fs.dirname(path) end
+  if not stat or stat.type ~= "directory" then path = vim.fs.dirname(path) end
   return path and vim.uv.fs_realpath(path) or path
 end
 
@@ -71,7 +71,7 @@ local function recent_file(root)
   end
 end
 
-local function project_file(root)
+function M.entry_file(root)
   local file = recent_file(root)
   if file then return file end
   for _, name in ipairs(entry_files) do
@@ -101,42 +101,15 @@ local function open_recent()
   if not vim.g.neovide or vim.fn.argc() > 0 or vim.v.this_session ~= "" or vim.tbl_contains(vim.v.argv, "-") then return end
   if vim.api.nvim_buf_get_name(0) ~= "" or vim.bo.buftype ~= "" or vim.bo.modified
       or vim.api.nvim_buf_line_count(0) ~= 1 or vim.api.nvim_get_current_line() ~= "" then return end
-  local file = recent_file()
-  local root = M.find_project_root(file or vim.fn.getcwd())
-  if not file and root then file = project_file(root) end
+  local recent_project = require("user.project_windows").recent()
+  local file = recent_project and recent_project.file and existing_file(recent_project.file) or recent_file()
+  local root = recent_project and recent_project.root or M.find_project_root(file or vim.fn.getcwd())
+  if root and require("user.project_windows").find(root) then return end
+  if root and (not file or M.find_project_root(file) ~= root) then file = M.entry_file(root) end
   if file and root then
     vim.api.nvim_set_current_dir(root)
     vim.cmd.edit({ args = { file }, magic = { file = false, bar = false } })
   end
-end
-
-local function candidate_roots()
-  local roots, seen = {}, {}
-  local function add(value)
-    local root = M.find_project_root(value)
-    if root then
-      root = vim.uv.fs_realpath(root) or root
-      if not seen[root] then
-        seen[root] = true
-        roots[#roots + 1] = root
-      end
-    end
-  end
-
-  -- Do not crawl the disk: only offer this instance's current and previously
-  -- visited projects, which keeps gw immediate even in a large source tree.
-  local cwd = vim.fn.getcwd()
-  add(cwd)
-  add(vim.api.nvim_buf_get_name(0))
-  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
-    add(vim.t[tab].switch_project_root)
-  end
-  for _, file in ipairs(history()) do add(file) end
-  table.sort(roots, function(a, b)
-    if (a == cwd) ~= (b == cwd) then return a == cwd end
-    return a:lower() < b:lower()
-  end)
-  return roots
 end
 
 local function set_tab_root(root)
@@ -156,81 +129,38 @@ local function set_tab_root(root)
   end
 end
 
-local function focus_project_tab(tab)
-  if vim.api.nvim_get_current_tabpage() == tab then return end
-  -- Switching tab-local directories emits DirChanged even without a :tcd call.
-  local ignored = vim.o.eventignore
-  vim.opt.eventignore:append("DirChanged")
-  local ok, err = pcall(vim.api.nvim_set_current_tabpage, tab)
-  vim.o.eventignore = ignored
-  if not ok then error(err) end
-end
-
-local function open_project(root)
-  local tabs = vim.api.nvim_list_tabpages()
-  local current = vim.api.nvim_get_current_tabpage()
-  -- Match canonical paths, so separate worktrees of the same repo stay separate.
-  for _, tab in ipairs(tabs) do
-    if vim.t[tab].switch_project_root == root then
-      focus_project_tab(tab)
-      set_tab_root(root)
-      return
-    end
-  end
-  table.insert(tabs, 1, current)
-  local diff = package.loaded["codediff.ui.lifecycle"]
-  for _, tab in ipairs(tabs) do
-    if not vim.t[tab].switch_project_root and not (diff and diff.get_session(tab)) then
-      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        if vim.bo[buf].buftype == "" and M.find_project_root(vim.api.nvim_buf_get_name(buf)) == root then
-          focus_project_tab(tab)
-          vim.t.switch_project_root = root
-          set_tab_root(root)
-          vim.api.nvim_set_current_win(win)
-          return
-        end
-      end
-    end
-  end
-  local file = project_file(root)
-  vim.cmd.tabnew()
-  vim.t.switch_project_root = root
-  set_tab_root(root)
-  if file then vim.cmd.edit({ args = { file }, magic = { file = false, bar = false } }) end
-end
-
 function M.switch()
-  remember(vim.api.nvim_get_current_buf())
-  local roots = candidate_roots()
-  if #roots == 0 then
-    vim.notify("Switch Project: no known project roots", vim.log.levels.WARN)
-    return
+  local windows = require("user.project_windows")
+  local items, seen = {}, {}
+  for _, window in ipairs(windows.open()) do
+    local root = window.root
+    if not seen[root] or window.pid == vim.uv.os_getpid() then
+      local item = { root = root, window = window, text = vim.fs.basename(root), file = root }
+      local index = seen[root] or #items + 1
+      items[index], seen[root] = item, index
+    end
   end
-  local items = {}
-  for _, root in ipairs(roots) do
-    items[#items + 1] = {
-      root = root,
-      text = vim.fn.fnamemodify(root, ":t"),
-      file = root,
-    }
+  if #items == 0 then
+    vim.notify("Switch Project: no open project windows", vim.log.levels.INFO)
+    return
   end
   Snacks.picker({
     title = "Switch Project",
     items = items,
     preview = "none",
     layout = { preset = "select", preview = false },
-    matcher = { fuzzy = true, sort_empty = true, filename_bonus = false },
+    matcher = { fuzzy = true, filename_bonus = false },
     format = function(item)
-      return {
-        { item.text, "Title" },
-        { "  " .. vim.fn.fnamemodify(item.root, ":~"), "Comment" },
-      }
+      return { { item.text, "Title" }, { "  " .. vim.fn.fnamemodify(item.root, ":~"), "Comment" } }
     end,
     actions = {
       confirm = function(picker, item)
         picker:close()
-        if item then open_project(item.root) end
+        if not item then return end
+        local window = windows.find(item.root, item.window.pid)
+        if not window or not windows.focus(window) then
+          vim.notify("Switch Project: the project window is unavailable", vim.log.levels.WARN)
+        end
       end,
     },
   })
@@ -244,7 +174,7 @@ function M.root(bufnr)
   local filename = vim.api.nvim_buf_get_name(bufnr)
   if filename == "" or filename:match("^%a[%w+.-]*://") then return nil end
   if vim.g.neovide then
-    local root = M.find_project_root(filename)
+    local root = require("user.project_windows").root or M.find_project_root(filename)
     if root then return root end
   end
   local directory = vim.fs.dirname(filename)
@@ -255,11 +185,6 @@ function M.root(bufnr)
 end
 
 function M.update(bufnr)
-  local project = vim.t.switch_project_root
-  if project then
-    set_tab_root(project)
-    return project
-  end
   local root = M.root(bufnr)
   if root then
     if vim.g.neovide then
@@ -285,10 +210,29 @@ function M.setup()
     end,
   })
   vim.api.nvim_create_autocmd("VimEnter", { group = group, once = true, nested = true, callback = open_recent })
+  if vim.g.neovide then
+    local windows = require("user.project_windows")
+    local function register()
+      local file = existing_file(vim.api.nvim_buf_get_name(0))
+      local root = windows.root or M.find_project_root(vim.api.nvim_buf_get_name(0))
+        or M.find_project_root(vim.fn.getcwd())
+      if root then
+        windows.register(root, file and M.find_project_root(file) == root and file or nil)
+      end
+    end
+    vim.api.nvim_create_autocmd({ "VimEnter", "UIEnter", "BufEnter" }, { group = group, callback = function()
+      if vim.v.vim_did_enter == 1 then vim.schedule(register) end
+    end })
+    vim.api.nvim_create_autocmd("UILeave", { group = group, callback = function()
+      windows.unregister(vim.v.event.chan)
+    end })
+    vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = function() windows.unregister() end })
+    if vim.v.vim_did_enter == 1 then vim.schedule(register) end
+  end
   vim.api.nvim_create_user_command("ProjectRoot", function() M.update(0) end,
     { desc = "Set current project root", force = true })
   vim.api.nvim_create_user_command("SwitchProject", M.switch,
-    { desc = "Switch to a known project in the current window", force = true })
+    { desc = "Focus an open project window", force = true })
 end
 
 return M

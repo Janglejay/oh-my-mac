@@ -13,6 +13,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 import zipfile
@@ -320,15 +321,30 @@ def file_stat(path):
 
 
 def missing_dependencies(log):
-    found = set()
-    for group, artifact, kind, version in re.findall(r'([\w.-]+):([\w.-]+):(jar|pom|maven-plugin):([\w.+-]+)', log):
-        suffix = 'pom' if kind == 'pom' else 'jar'
-        if group.startswith(('http', 'https')):
+    coordinate = re.compile(
+        r'([\w-]+(?:\.[\w-]+)*):([\w.-]+):(jar|pom|maven-plugin):'
+        r'(?:([\w.+-]+):)?([\w.+-]+)'
+    )
+    paths, first = set(), None
+    for line in log.splitlines():
+        if not (re.match(r'^\[ERROR\]\s+dependency:', line)
+                or (line.startswith('[ERROR]') and re.search(
+                    r'\b(?:absent|offline mode|not been downloaded|could not find|non-resolvable parent POM)\b',
+                    line, re.I))):
             continue
-        relative = Path(group.replace('.', '/')) / artifact / version / f'{artifact}-{version}.{suffix}'
-        found.add(str(Path.home() / '.m2/repository' / relative))
-        found.add(str(SHARED_REPO / relative))
-    return found
+        for group, artifact, kind, classifier, version in coordinate.findall(line):
+            if artifact in {'.', '..'} or version in {'.', '..'}:
+                continue
+            identifier = f'{group}:{artifact}:{version}'
+            first = first or identifier
+            relative = Path(group.replace('.', '/')) / artifact / version
+            stem = f'{artifact}-{version}'
+            names = [stem + '.pom']
+            if kind != 'pom':
+                names.append(stem + (f'-{classifier}' if classifier else '') + '.jar')
+            for repository in (Path.home() / '.m2/repository', SHARED_REPO):
+                paths.update(str(repository / relative / name) for name in names)
+    return first, paths
 
 
 CRC_TABLE = []
@@ -511,10 +527,49 @@ def build_compatibility(compatibility, build_jdk, overrides, log):
     return applied
 
 
+def attach_legacy_jdk_sources(workspace, capture, cache):
+    """Associate pre-module JDK classes with their own sources, without changing attribution."""
+    jdk_home = Path(capture["build_jdk"])
+    runtime = jdk_home / "jre/lib/rt.jar"
+    archive = jdk_home / "src.zip"
+    if not runtime.is_file() or not archive.is_file():
+        return False
+    key = hashlib.sha256(file_stat(str(archive)).encode()).hexdigest()[:20]
+    source_dir = cache / key
+    cache.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (cache / "extract.lock").open("a+") as lock:
+        fcntl.lockf(lock, fcntl.LOCK_EX)
+        if not source_dir.is_dir():
+            with tempfile.TemporaryDirectory(prefix="extract-", dir=cache) as scratch:
+                staging = Path(scratch) / "sources"
+                staging.mkdir()
+                with zipfile.ZipFile(archive) as sources:
+                    if "java/lang/Object.java" not in sources.namelist():
+                        return False
+                    for entry in sources.infolist():
+                        path = Path(entry.filename)
+                        if path.suffix == ".java" and not path.is_absolute() and ".." not in path.parts:
+                            sources.extract(entry, staging)
+                staging.rename(source_dir)
+    entries = workspace.setdefault("dependencySources", [])
+    entry = {"gav": "jdk:rt:8", "jar": str(runtime), "status": "PRESENT", "dir": str(source_dir),
+             "classpath": [str(runtime)], "typeIndex": None}
+    for index, existing in enumerate(entries):
+        if existing["jar"] == str(runtime):
+            if existing == entry:
+                return False
+            entries[index] = entry
+            return True
+    entries.append(entry)
+    return True
+
+
 def publish_live(stale_params=()):
     """Publish metadata under the same record lock used by Lathe's writer."""
     raw = WORKTREE / ".lathe"
     workspace = json.loads((raw / "workspace.json").read_text())
+    capture = json.loads((TRIAL / "capture-result.json").read_text())
+    attach_legacy_jdk_sources(workspace, capture, TRIAL.parents[1] / "legacy-jdk-sources")
     generation = digest(TRIAL / "capture-result.json")
     state_path = LIVE / "live-state.json"
     if state_path.exists() and json.loads(state_path.read_text()).get("generation") == generation:
@@ -730,7 +785,8 @@ def prepare(info, args):
     if BUILD_REPO.is_relative_to(CHECKOUT):
         raise RuntimeError('Analysis build directory must be outside the original checkout')
     old_state = json.loads((TRIAL / 'state.json').read_text()) if (TRIAL / 'state.json').exists() else {}
-    initial_watch = sorted(set(watch_files(info)) | set(old_state.get('input_stats', {})))
+    initial_watch = sorted(set(watch_files(info)) | set(old_state.get('input_stats', {}))
+                           | set(old_state.get('dependency_watch', [])))
     initial_stats = {p: file_stat(p) for p in initial_watch}
     previous = old_state.get('input_stats', {})
     build_changed = any(previous.get(p) != v and (p in previous or not v.endswith(':missing'))
@@ -849,10 +905,11 @@ def prepare(info, args):
     except BaseException as error:
         result.update(status='failed', error=str(error), model_ready=(LIVE / '.lathe/workspace.json').is_file())
         text = log.read_text() if log.exists() else ''
-        first_missing = re.search(r'^\[ERROR\]\s+dependency: [\w.-]+:([\w.-]+):(?:jar|pom):([\w.+-]+)', text, re.M)
+        first_missing, dependency_watch = missing_dependencies(text)
         if first_missing:
-            result['missing_dependency'] = ':'.join(first_missing.groups())
-        paths = sorted(set(initial_watch) | missing_dependencies(text))
+            result['missing_dependency'] = first_missing
+        result['dependency_watch'] = sorted(dependency_watch)
+        paths = sorted(set(initial_watch) | dependency_watch)
         result.update(watch=paths, watch_values=[initial_stats.get(p, file_stat(p)) for p in paths])
         if isinstance(error, (SystemExit, KeyboardInterrupt)):
             result['error'] = 'Preparation cancelled'

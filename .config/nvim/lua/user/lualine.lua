@@ -71,6 +71,14 @@ local function current_java_status()
   return require("user.lathe_live").status()
 end
 
+local lathe_colors = {
+  ready = "#a6e3a1",
+  warning = "#f9e2af",
+  error = "#f38ba8",
+  busy = "#89b4fa",
+  none = "#a6adc8",
+}
+
 local lsp_progress = {
   function()
     local _, text = current_java_status()
@@ -79,9 +87,7 @@ local lsp_progress = {
   end,
   color = function()
     local state = current_java_status()
-    if state == "none" or state == "error" then return { fg = "#f38ba8" } end
-    if state == "ready" then return { fg = "#a6e3a1" } end
-    return { fg = "#fab387" }
+    return { fg = lathe_colors[state] or lathe_colors.none }
   end,
 }
 

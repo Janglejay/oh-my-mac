@@ -112,8 +112,8 @@ Lathe 使用已安装的公开客户端、Maven 扩展和独立依赖缓存，�
 
 公开发行包解压到 `~/.local/share/nvim/lazy/snacks.nvim`，由本地dir加载，无Git remote；该版本由本节固定，不由lazy-lock锁定。新机器应先从[固定commit发行包](https://codeload.github.com/folke/snacks.nvim/tar.gz/e6fd58c82f2f3fcddd3fe81703d47d6d48fc7b9f)安装到此目录。
 
-- `,f` 项目符号、`,F` 全文、`,e` 项目最近文件、`,b` buffer、`gr/gi` 引用与实现均有源码预览。Java `,f`保留已保存类型/方法扫描；字段和未保存覆盖不是本轮新增能力。
-- Neovide 无参数启动时恢复最近项目的根目录和文件。`gw` 在同一窗口切换项目。已经打开的项目会复用原编辑页，新项目才会新建编辑页并优先打开最近访问的文件。`,p` / `,P` 打开目录树并定位当前文件。项目树 Git 颜色显示工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
+- `,f` 项目符号、`,F` 全文、`,e` 项目最近文件、`,b` buffer、`gr/gi` 引用与实现均有源码预览。Java `,f` 用 Tree-sitter 搜索已保存的类型和方法声明，支持 private 方法、泛型和重载。
+- 终端 `vim` 无参数时恢复最近项目。`vim <项目目录或文件>` 为每个项目打开一个独立的 Neovide 窗口，并复用同一项目已有的窗口。`gw` 只在当前已打开的项目窗口之间切换。`,p` / `,P` 打开目录树并定位当前文件。项目树 Git 颜色显示工作区状态，分支对比使用 `,gd` 的 CodeDiff 树。
 - `st` / Ctrl+反斜杠显隐底部终端，保留会话、尺寸和Esc/jk；`,c/,C`关闭buffer保留窗口布局。关闭未保存buffer会询问，不强制丢弃。
 - Which-key主菜单聚焦搜索、文件、Git、Java、HTTP与Problems；重复的`,S*`和次要LSP别名仍可使用，不在主菜单展示；Merge专用m菜单只在合并上下文出现。
 
@@ -170,6 +170,8 @@ Spring 符号补充使用 [Spring Boot Tools](https://marketplace.visualstudio.c
 `gn` 跳到配对括号。Visual 模式下保留选区起点，将选区扩展到配对位置，支持字符、行和块选择。
 
 标签上的绿点表示缓冲区有未保存修改。普通 UTF-8 文件的内容手动恢复到与磁盘完全一致后，绿点会自动消失。比较保留换行格式和 BOM 信息，特殊缓冲区及其他编码继续使用 Neovim 的修改标记。
+
+已命名的可写文件在文本变化后尽快自动保存，离开插入模式、切出窗口和打开 Git Diff 时也会保存待写入的文件。磁盘文件被外部修改时自动保存会暂停并提示，未命名文件需要先指定路径。三方合并的结果仍通过合并操作完成。
 
 **文本对象**（Visual/Operator 模式）：
 - `af` / `if`：方法外部/内部
@@ -260,7 +262,7 @@ Spring 符号补充使用 [Spring Boot Tools](https://marketplace.visualstudio.c
 | `sq` | 关闭窗口 |
 | `<Leader>w` | 最大化当前拆分/恢复原布局 |
 | `<Leader><Arrow>` | 调整窗口大小 |
-| `gw` | 在当前窗口切换项目，复用已打开的项目编辑页 |
+| `gw` | 切换到当前已经打开的项目窗口 |
 | `<Leader>p` | 打开项目目录树并定位当前文件 |
 | `z`（Explorer） | 递归展开光标所在目录的可见子目录，已全部展开时收起这棵子树。在文件上操作其父目录，项目根目录由 `Z` 控制 |
 | `Z`（Explorer） | 已有展开的目录时全部收起，否则递归展开可见目录 |
@@ -321,7 +323,7 @@ Explorer 会把展开后只有一个可见子目录的连续层级合并成点�
 【窗口】
   gh/j/k/l  窗口导航
   <Leader>w  最大化当前拆分/恢复布局
-  gw   切换项目（复用当前窗口中的项目编辑页）
+  gw   切换到已打开的项目窗口
   <Leader>p  项目文件树
 ```
 
@@ -429,11 +431,17 @@ Lathe 只替换独立构建副本里版本恰好匹配 `from` 的直接依赖。
 
 | 入口 | Lathe |
 |---|---|
-| 状态栏 | 准备和连接状态、Java 版本、部分索引提示和本机依赖覆盖提示 |
-| `,lr` | 刷新当前工程模型，首次准备失败后可重试 |
-| `,lR` | 在独立构建副本 clean 后重新准备 |
-| `:LatheLog` | 准备日志 |
+| 状态栏 | 绿色表示就绪、黄色表示部分索引或编译告警、红色表示失败、蓝色表示正在处理、灰色表示尚无模型 |
+| `,lr` | 刷新当前 Maven 项目，可在项目的 POM 或 Java 文件中执行 |
+| `,lR` | 在独立构建副本 clean 后重新准备，已有增量刷新时会排队执行 |
+| `:LatheLog` | 查看当前项目的准备日志 |
 | `:LatheSync` | 手动刷新 |
+
+若刷新因离线缓存缺失而失败，状态栏会显示依赖坐标并保留上次可用模型。将对应版本补入本机 Maven 缓存后，Lathe 可检测到 JAR 或 POM 变化并重试。
+
+在 Neovim 配置目录运行 `nvim --headless -i NONE -n '+luafile scripts/test-lathe-refresh.lua'` 验证刷新行为，运行 `python3 -B scripts/test_lathe_model.py` 验证 Maven 缺依赖诊断。
+
+`gd` 打开外部依赖时优先使用同版本源码。将 [CFR 0.152](https://www.benf.org/other/cfr/) 的 JAR 放到 `stdpath("data")` 下的 `tools/cfr-0.152.jar`，缺少源码包时可查看本地反编译 Java。反编译不可用时仍可查看字节码。
 
 索引没有跨语言统一的 LSP 重建协议；上述模型维护动作针对 Lathe。通用导航、引用、重构和补全映射统一定义在 `lsp/handlers.lua`、`plugins/search.lua` 与 `cmp.lua`，不在语言服务配置中重复绑定。
 

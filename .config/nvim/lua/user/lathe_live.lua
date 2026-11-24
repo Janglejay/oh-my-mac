@@ -35,6 +35,10 @@ end
 local function model_exists(ctx)
   return uv.fs_stat(ctx.analysis .. "/.lathe/workspace.json") ~= nil
 end
+local function state_version(ctx)
+  local stat = uv.fs_stat(ctx.state .. "/state.json")
+  return stat and ("%s:%s:%s"):format(stat.ino, stat.mtime.sec, stat.mtime.nsec) or ""
+end
 local function signature(ctx)
   local values = {}
   for _, path in ipairs(ctx.watch or {}) do
@@ -88,24 +92,30 @@ local function attach_waiters(ctx)
   end
 end
 local function finish(ctx, result)
-  local data = result.stdout and vim.json.decode(result.stdout, { luanil = { object = true, array = true } }) or nil
+  local ok, data = pcall(vim.json.decode, result.stdout or "", { luanil = { object = true, array = true } })
+  if not ok or type(data) ~= "table" then data = nil end
   update(ctx, data)
   ctx.ready = model_exists(ctx)
   if result.code == 75 then
     ctx.status, ctx.waiting = "waiting", true
-  elseif result.code == 0 then
+  elseif result.code == 0 and data and data.status == "ready" and ctx.ready then
     ctx.status, ctx.waiting, ctx.error = "ready", false, nil
     attach_waiters(ctx)
   else
     ctx.status, ctx.waiting = "failed", false
-    ctx.error = (data and data.error) or result.stderr or "Preparation failed"
+    ctx.error = (data and data.error) or (result.stderr ~= "" and result.stderr)
+      or "Preparation did not publish a usable model"
     if not ctx.attempted then ctx.attempted = signature(ctx) end
     M.last_failure = ctx
     -- Keep failures non-blocking; full output is available on explicit request.
-    vim.api.nvim_echo({ { "Lathe setup failed. Press ,lr to retry or run :LatheLog to view the log", "WarningMsg" } }, true, {})
+    local message = ctx.missing_dependency and ("Lathe: Maven dependency unavailable offline: " .. ctx.missing_dependency
+      .. ". Check :LatheLog and retry after the exact artifact is cached.")
+      or "Lathe preparation failed. Run :LatheLog for details."
+    vim.api.nvim_echo({ { message, "WarningMsg" } }, true, {})
   end
   changed()
 end
+local enqueue
 local function pump()
   if stopped or active or #queue == 0 then return end
   local ctx = table.remove(queue, 1)
@@ -113,25 +123,44 @@ local function pump()
   ctx.attempted = signature(ctx)
   active = ctx
   local cmd = command("prepare", { "--root", ctx.source })
-  if ctx.clean then cmd[#cmd + 1] = "--clean" end
-  ctx.clean = nil
+  local before, clean = state_version(ctx), ctx.clean
+  if clean then cmd[#cmd + 1] = "--clean" end
   ctx.job = vim.system(cmd, { text = true }, vim.schedule_wrap(function(result)
     ctx.job, active = nil, nil
     if stopped then return end
     local ok, err = pcall(finish, ctx, result)
     if not ok then ctx.status, ctx.error = "failed", tostring(err); changed() end
+    local followup = ctx.followup_clean
+    ctx.followup_clean = nil
+    if ctx.waiting then
+      ctx.waiting_version, ctx.waiting_clean = before, clean or followup
+    elseif followup then
+      enqueue(ctx, true)
+    end
     pump()
   end))
   changed()
 end
-local function enqueue(ctx, clean)
-  if stopped or ctx.job or ctx.queued then return end
+enqueue = function(ctx, clean)
+  if stopped then return end
+  if ctx.job then
+    if clean and not ctx.clean then ctx.followup_clean = true end
+    return
+  end
+  if ctx.queued then
+    ctx.clean = ctx.clean or clean
+    return
+  end
+  if ctx.waiting then
+    ctx.waiting_clean = ctx.waiting_clean or clean
+    return
+  end
   ctx.clean, ctx.queued, ctx.status = clean, true, "queued"
   queue[#queue + 1] = ctx
   pump()
 end
 
-local function ensure_path(name, buf, callback)
+local function ensure_path(name, buf, callback, clean)
   if stopped then return end
   if not name then return end
   if inside(name, options.state_root) then
@@ -141,6 +170,7 @@ local function ensure_path(name, buf, callback)
     if ctx and ctx.ready then
       ctx.dormant = false
       if callback then callback(ctx) else M.attach(buf) end
+      if clean ~= nil then enqueue(ctx, clean) end
       return
     end
     local key = name:match("^" .. vim.pesc(options.state_root) .. "/projects/(%x+)/cache/deps/")
@@ -150,7 +180,7 @@ local function ensure_path(name, buf, callback)
       if identity and identity.id == key and identity.cache == state .. "/cache"
           and type(identity.source) == "string" and not inside(canonical(identity.source), options.state_root)
           and uv.fs_stat(identity.source .. "/pom.xml") then
-        ensure_path(canonical(identity.source .. "/pom.xml"), buf, callback)
+        ensure_path(canonical(identity.source .. "/pom.xml"), buf, callback, clean)
       end
     end
     return
@@ -167,6 +197,7 @@ local function ensure_path(name, buf, callback)
   if ctx then
     ctx.dormant = false
     last_context = ctx
+    if clean ~= nil then enqueue(ctx, clean) end
     if ctx.ready then if callback then callback(ctx) end; return end
     ctx.waiters = ctx.waiters or {}
     if buf then
@@ -176,11 +207,16 @@ local function ensure_path(name, buf, callback)
     if ctx.status ~= "failed" and not ctx.waiting then enqueue(ctx, false) end
     return
   end
-  if inspecting[root] then if buf then inspecting[root][buf] = callback or false end; return end
-  inspecting[root] = buf and { [buf] = callback or false } or {}
+  if inspecting[root] then
+    local request = inspecting[root]
+    if buf and (callback or request.waiters[buf] == nil) then request.waiters[buf] = callback or false end
+    if clean ~= nil then request.clean = request.clean or clean end
+    return
+  end
+  inspecting[root] = { waiters = buf and { [buf] = callback or false } or {}, clean = clean }
   inspection_jobs[root] = vim.system(command("inspect", { "--file", name }), { text = true }, vim.schedule_wrap(function(result)
     inspection_jobs[root] = nil
-    local waiters = inspecting[root]; inspecting[root] = nil
+    local request = inspecting[root]; inspecting[root] = nil
     if stopped then return end
     local ok, data = pcall(vim.json.decode, result.stdout or "")
     if not ok or result.code ~= 0 or not data.id then
@@ -195,12 +231,12 @@ local function ensure_path(name, buf, callback)
       if ctx.ready and not ctx.status then update(ctx, read_json(ctx.analysis .. "/live-state.json")); ctx.status = "ready" end
     end
     by_pom[root] = ctx; last_context = ctx
-    for b, cb in pairs(waiters or {}) do
+    for b, cb in pairs(request.waiters) do
       ctx.waiters[b] = ctx.waiters[b] or {}
       if cb then ctx.waiters[b][#ctx.waiters[b] + 1] = cb end
     end
     if ctx.ready then attach_waiters(ctx) end
-    if not ctx.ready or data.needs_analysis_refresh then enqueue(ctx, false) end
+    if request.clean ~= nil or not ctx.ready or data.needs_analysis_refresh then enqueue(ctx, request.clean or false) end
   end))
 end
 function M.ensure(buf, callback)
@@ -220,11 +256,15 @@ end
 function M.refresh(buf, clean)
   if not buf or buf == 0 then buf = vim.api.nvim_get_current_buf() end
   local ctx = M.context(buf)
-  if not ctx and filename(buf) and vim.bo[buf].filetype == "java" then M.ensure(buf); return end
+  local name = filename(buf)
+  if not ctx and name then
+    ensure_path(name, buf, nil, clean == true)
+    return
+  end
   ctx = ctx or last_context
-  if not ctx then M.ensure(buf or 0); return end
-  ctx.waiting = false
-  enqueue(ctx, clean)
+  if not ctx then return end
+  ctx.dormant = false
+  enqueue(ctx, clean == true)
 end
 function M.model_changed(client_id)
   local ctx = M.from_client(client_id)
@@ -232,7 +272,7 @@ function M.model_changed(client_id)
 end
 function M.log()
   local current = M.context(0)
-  local ctx = (current and current.status == "failed" and current) or M.last_failure or current or last_context
+  local ctx = current or M.last_failure or last_context
   if not ctx then return end
   vim.cmd("botright split " .. vim.fn.fnameescape(ctx.state .. "/logs/capture.log"))
   vim.bo.readonly = true
@@ -246,20 +286,23 @@ function M.status()
   if ctx.status == "failed" then
     local state = ctx.ready and "Update failed (using previous model)" or "Setup failed"
     local subject = ctx.missing_dependency or name
-    return "error", "Lathe " .. state .. " · " .. subject .. " · ,lr to retry"
+    local hint = ctx.missing_dependency and " · See :LatheLog" or " · ,lr to retry"
+    return "error", "Lathe " .. state .. " · " .. subject .. hint
   end
+  local note = ctx.partial_model and " · Partial index (Maven errors)"
+    or (ctx.navigation_only and " · Source compilation errors" or "")
+  local level = note ~= "" and "warning" or "ready"
+  if (ctx.dependency_override_count or 0) > 0 then note = note .. " · Dependency overrides active" end
   local cs = vim.lsp.get_clients({ name = "lathe" })
   for _, c in ipairs(cs) do
     if c.config.root_dir == ctx.analysis then
       local releases = ctx.java_releases or { 8 }
       local java = #releases > 0 and "Java " .. table.concat(releases, "/") .. " · " or ""
-      local note = ctx.partial_model and " · Partial index (Maven errors)"
-        or (ctx.navigation_only and " · Source compilation errors" or "")
-      if (ctx.dependency_override_count or 0) > 0 then note = note .. " · Dependency overrides active" end
-      return c.initialized and "ready" or "busy", "Lathe · " .. java .. name .. note
+      return c.initialized and level or "busy", "Lathe · " .. java .. name .. note
     end
   end
-  return "none", "Lathe Project model ready · " .. name
+  if ctx.ready then return level, "Lathe Project model ready · " .. name .. note end
+  return "none", "Lathe · No project model · " .. name
 end
 
 function M.check_buffers()
@@ -280,11 +323,25 @@ function M.tick()
   if ticks % 2 ~= 0 then return end
   local lib = package.loaded["diffview.lib"]; local view = lib and lib.get_current_view()
   if view and view.update_files then view:update_files() end
+  local current = M.context(0)
   for _, ctx in pairs(M.contexts) do
-    if not ctx.dormant and not ctx.job and not ctx.queued then
+    if (not ctx.dormant or ctx == current or ctx.waiting_clean) and not ctx.job and not ctx.queued then
       if ctx.waiting then
         local data = read_json(ctx.state .. "/state.json")
-        if data and data.status ~= "preparing" then update(ctx, data); ctx.waiting = false; attach_waiters(ctx) end
+        local running = data and data.status == "preparing" and type(data.pid) == "number" and uv.kill(data.pid, 0) == 0
+        if not running then
+          local fresh = data and (data.status == "ready" or data.status == "failed")
+            and state_version(ctx) ~= ctx.waiting_version
+          local clean = ctx.waiting_clean
+          ctx.waiting, ctx.waiting_clean, ctx.waiting_version = false, nil, nil
+          if fresh and not clean then
+            update(ctx, data)
+            attach_waiters(ctx)
+            changed()
+          else
+            enqueue(ctx, clean)
+          end
+        end
       elseif ctx.attempted and signature(ctx) ~= ctx.attempted then
         enqueue(ctx, false)
       end
